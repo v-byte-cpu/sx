@@ -1,7 +1,6 @@
 package command
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"net"
@@ -12,11 +11,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/v-byte-cpu/sx/command/log"
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/packet/afpacket"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
-	"go.uber.org/zap"
 )
 
 var errSrcIP = errors.New("invalid source IP")
@@ -77,44 +76,22 @@ var arpCmd = &cobra.Command{
 			}
 		}
 
+		var logger log.Logger
+		if jsonFlag {
+			logger, err = log.NewJSONLogger(os.Stdout, "arp")
+		} else {
+			logger, err = log.NewPlainLogger(os.Stdout, "arp")
+		}
+		if err != nil {
+			return err
+		}
+
 		r := &scan.Range{Subnet: dstSubnet, Interface: iface, SrcIP: srcIP.To4(), SrcMAC: srcMAC}
-		return startEngine(r)
+		return startEngine(logger, r)
 	},
 }
 
-func logResults(logger *zap.Logger, results <-chan *arp.ScanResult) {
-	bw := bufio.NewWriter(os.Stdout)
-	defer bw.Flush()
-	for result := range results {
-		// TODO refactor it using logger facade interface
-		if jsonFlag {
-			data, err := result.MarshalJSON()
-			if err != nil {
-				logger.Error("arp", zap.Error(err))
-			}
-			_, err = bw.Write(data)
-			if err != nil {
-				logger.Error("arp", zap.Error(err))
-			}
-		} else {
-			_, err := bw.WriteString(result.String())
-			if err != nil {
-				logger.Error("arp", zap.Error(err))
-			}
-		}
-		err := bw.WriteByte('\n')
-		if err != nil {
-			logger.Error("arp", zap.Error(err))
-		}
-	}
-}
-
-func startEngine(r *scan.Range) error {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		return err
-	}
-
+func startEngine(logger log.Logger, r *scan.Range) error {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
@@ -136,7 +113,7 @@ func startEngine(r *scan.Range) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		logResults(logger, m.Results())
+		logger.LogResults(m.Results())
 	}()
 
 	// start scan
@@ -153,7 +130,7 @@ func startEngine(r *scan.Range) error {
 	go func() {
 		defer wg.Done()
 		for err := range errc {
-			logger.Error("arp", zap.Error(err))
+			logger.Error(err)
 		}
 	}()
 	wg.Wait()
