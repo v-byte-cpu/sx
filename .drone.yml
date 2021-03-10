@@ -1,0 +1,29 @@
+---
+kind: pipeline
+type: docker
+name: sx-ci
+
+clone:
+  depth: 1
+
+steps:
+  - name: test
+    image: golang:1.16
+    commands:
+      - apt-get update
+      - apt-get install -y libpcap-dev
+      - go test ./... -v -cover
+
+  - name: build
+    image: golang:1.16
+    commands:
+      - apt-get update
+      - apt-get install -y libpcap-dev
+      - go build -ldflags "-w -s"
+
+trigger:
+  branch:
+    - master
+  event:
+    - push
+    - pull_request
