@@ -17,15 +17,15 @@ import (
 
 type ScanMethod struct {
 	gen             *scan.PacketMultiGenerator
+	parser          *gopacket.DecodingLayerParser
 	results         chan *ScanResult
 	internalResults chan *ScanResult
 	ctx             context.Context
 
+	rcvDecoded   []gopacket.LayerType
 	rcvEth       layers.Ethernet
 	rcvARP       layers.ARP
-	rcvDecoded   []gopacket.LayerType
 	rcvMacPrefix [3]byte
-	parser       *gopacket.DecodingLayerParser
 }
 
 //easyjson:json
@@ -88,7 +88,7 @@ func (s *ScanMethod) Packets(ctx context.Context, r *scan.Range) <-chan *packet.
 	return s.gen.Packets(ctx, pairs)
 }
 
-func (s *ScanMethod) ProcessPacketData(data []byte, ci *gopacket.CaptureInfo) error {
+func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
 	// try to exit as early as possible
 	select {
 	case <-s.ctx.Done():
@@ -125,7 +125,7 @@ func newPacketFiller() *packetFiller {
 	return &packetFiller{}
 }
 
-func (f *packetFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) error {
+func (*packetFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       pair.SrcMAC,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},

@@ -7,6 +7,16 @@ clone:
   depth: 1
 
 steps:
+  - name: lint
+    image: golangci/golangci-lint:v1.38
+    commands:
+      - apt-get update
+      - apt-get install -y libpcap-dev
+      - golangci-lint run -v
+      # go 1.16 install doesn't modify go.mod and go.sum
+      - go install github.com/mgechev/revive@v1.0.3
+      - revive -config .revive.toml -formatter friendly ./...
+
   - name: test
     image: golang:1.16
     commands:

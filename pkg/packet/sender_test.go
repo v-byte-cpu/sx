@@ -23,10 +23,9 @@ func TestSenderWithEmptyChannel(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	out := chanErrToGeneric(errc)
-	result := chanToSlice(t, out, 0, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(errc), 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
-	result = chanToSlice(t, done, 0, 3*time.Second)
+	result = chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -35,7 +34,8 @@ func TestSenderWithOnePacket(t *testing.T) {
 	in := make(chan *BufferData, 1)
 	data := []byte{0x1, 0x2, 0x3}
 	buffer := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	require.NoError(t, err)
 	in <- &BufferData{Buf: buffer}
 	close(in)
 
@@ -49,10 +49,9 @@ func TestSenderWithOnePacket(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	out := chanErrToGeneric(errc)
-	result := chanToSlice(t, out, 0, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(errc), 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
-	result = chanToSlice(t, done, 0, 3*time.Second)
+	result = chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -62,12 +61,14 @@ func TestSenderWithTwoPackets(t *testing.T) {
 
 	data := []byte{0x1, 0x2, 0x3}
 	buffer := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	require.NoError(t, err)
 	in <- &BufferData{Buf: buffer}
 
 	data2 := []byte{0x2, 0x3, 0x4}
 	buffer2 := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer2, gopacket.SerializeOptions{}, gopacket.Payload(data2))
+	err = gopacket.SerializeLayers(buffer2, gopacket.SerializeOptions{}, gopacket.Payload(data2))
+	require.NoError(t, err)
 	in <- &BufferData{Buf: buffer2}
 
 	close(in)
@@ -87,10 +88,9 @@ func TestSenderWithTwoPackets(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	out := chanErrToGeneric(errc)
-	result := chanToSlice(t, out, 0, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(errc), 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
-	result = chanToSlice(t, done, 0, 3*time.Second)
+	result = chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -106,12 +106,11 @@ func TestSenderWithInvalidPacketReturnsError(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	out := chanErrToGeneric(errc)
-	result := chanToSlice(t, out, 1, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(errc), 1)
 	assert.Equal(t, 1, len(result), "error slice size is invalid")
 	assert.Error(t, result[0].(error))
 
-	result = chanToSlice(t, done, 0, 3*time.Second)
+	result = chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -121,7 +120,8 @@ func TestSenderWithWriteErrorReturnsError(t *testing.T) {
 
 	data := []byte{0x1, 0x2, 0x3}
 	buffer := gopacket.NewSerializeBuffer()
-	gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	err := gopacket.SerializeLayers(buffer, gopacket.SerializeOptions{}, gopacket.Payload(data))
+	require.NoError(t, err)
 	in <- &BufferData{Buf: buffer}
 	close(in)
 
@@ -132,12 +132,11 @@ func TestSenderWithWriteErrorReturnsError(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	out := chanErrToGeneric(errc)
-	result := chanToSlice(t, out, 1, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(errc), 1)
 	assert.Equal(t, 1, len(result), "error slice size is invalid")
 	assert.Error(t, result[0].(error))
 
-	result = chanToSlice(t, done, 0, 3*time.Second)
+	result = chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -157,6 +156,6 @@ func TestSenderWithTimeout(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		require.FailNow(t, "exit timeout")
 	}
-	result := chanToSlice(t, done, 0, 3*time.Second)
+	result := chanToSlice(t, done, 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }

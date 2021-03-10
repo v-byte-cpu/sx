@@ -4,7 +4,6 @@ import (
 	"context"
 	"net"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,31 +97,21 @@ func TestIPPortPairsWithInvalidInput(t *testing.T) {
 	}
 }
 
-func comparePairChanToSlice(t *testing.T, expected []*Request, in <-chan *Request, timeout time.Duration) {
+func comparePairChanToSlice(t *testing.T, expected []interface{}, in <-chan *Request) {
 	t.Helper()
-	result := pairChanToSlice(t, in, len(expected), timeout)
+	result := chanToSlice(t, chanPairToGeneric(in), len(expected))
 	require.Equal(t, expected, result)
 }
 
-func pairChanToSlice(t *testing.T, in <-chan *Request, expectedLen int, timeout time.Duration) []*Request {
-	t.Helper()
-	result := []*Request{}
-loop:
-	for {
-		select {
-		case data, ok := <-in:
-			if !ok {
-				break loop
-			}
-			if len(result) == expectedLen {
-				require.FailNow(t, "chan size is greater than expected, data:", data)
-			}
-			result = append(result, data)
-		case <-time.After(timeout):
-			t.Fatal("read timeout")
+func chanPairToGeneric(in <-chan *Request) <-chan interface{} {
+	out := make(chan interface{}, cap(in))
+	go func() {
+		defer close(out)
+		for i := range in {
+			out <- i
 		}
-	}
-	return result
+	}()
+	return out
 }
 
 func TestIPPortPairsWithOneIpOnePort(t *testing.T) {
@@ -136,10 +125,10 @@ func TestIPPortPairsWithOneIpOnePort(t *testing.T) {
 		))
 	assert.NoError(t, err)
 
-	expected := []*Request{
+	expected := []interface{}{
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
 	}
-	comparePairChanToSlice(t, expected, pairs, 5*time.Second)
+	comparePairChanToSlice(t, expected, pairs)
 }
 
 func TestIPPortPairsWithOneIpTwoPorts(t *testing.T) {
@@ -153,11 +142,11 @@ func TestIPPortPairsWithOneIpTwoPorts(t *testing.T) {
 		))
 	assert.NoError(t, err)
 
-	expected := []*Request{
+	expected := []interface{}{
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port+1)),
 	}
-	comparePairChanToSlice(t, expected, pairs, 5*time.Second)
+	comparePairChanToSlice(t, expected, pairs)
 }
 
 func TestIPPortPairsWithTwoIpsOnePort(t *testing.T) {
@@ -171,11 +160,11 @@ func TestIPPortPairsWithTwoIpsOnePort(t *testing.T) {
 		))
 	assert.NoError(t, err)
 
-	expected := []*Request{
+	expected := []interface{}{
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
 	}
-	comparePairChanToSlice(t, expected, pairs, 5*time.Second)
+	comparePairChanToSlice(t, expected, pairs)
 }
 
 func TestIPPortPairsWithFourIpsOnePort(t *testing.T) {
@@ -189,13 +178,13 @@ func TestIPPortPairsWithFourIpsOnePort(t *testing.T) {
 		))
 	assert.NoError(t, err)
 
-	expected := []*Request{
+	expected := []interface{}{
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 3).To4()), withDstPort(port)),
 	}
-	comparePairChanToSlice(t, expected, pairs, 5*time.Second)
+	comparePairChanToSlice(t, expected, pairs)
 }
 
 func TestIPPortPairsWithTwoIpsTwoPorts(t *testing.T) {
@@ -209,11 +198,11 @@ func TestIPPortPairsWithTwoIpsTwoPorts(t *testing.T) {
 		))
 	assert.NoError(t, err)
 
-	expected := []*Request{
+	expected := []interface{}{
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port+1)),
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port+1)),
 	}
-	comparePairChanToSlice(t, expected, pairs, 5*time.Second)
+	comparePairChanToSlice(t, expected, pairs)
 }

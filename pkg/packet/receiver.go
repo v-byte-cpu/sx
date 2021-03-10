@@ -61,31 +61,31 @@ func (r *receiver) ReceivePackets(ctx context.Context) <-chan error {
 			case <-ctx.Done():
 				return
 			default:
-				data, ci, err := r.sr.ReadPacketData()
-				if err != nil {
-					// Immediately retry for temporary errors
-					if isTemporaryError(err) {
-						continue
-					}
-					if isUnrecoverableError(err) {
-						return
-					}
-					// Log unknown error
-					select {
-					case <-ctx.Done():
-						return
-					case errc <- err:
-					}
-					// Sleep briefly and try again
-					time.Sleep(time.Millisecond * time.Duration(5))
+			}
+			data, ci, err := r.sr.ReadPacketData()
+			if err != nil {
+				// Immediately retry for temporary errors
+				if isTemporaryError(err) {
 					continue
 				}
-				if err := r.p.ProcessPacketData(data, ci); err != nil {
-					select {
-					case <-ctx.Done():
-						return
-					case errc <- err:
-					}
+				if isUnrecoverableError(err) {
+					return
+				}
+				// Log unknown error
+				select {
+				case <-ctx.Done():
+					return
+				case errc <- err:
+				}
+				// Sleep briefly and try again
+				time.Sleep(5 * time.Millisecond)
+				continue
+			}
+			if err := r.p.ProcessPacketData(data, ci); err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				case errc <- err:
 				}
 			}
 		}

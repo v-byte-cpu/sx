@@ -12,12 +12,12 @@ var ErrPortRange = errors.New("invalid port range")
 var ErrSubnet = errors.New("invalid subnet")
 
 type Request struct {
+	Meta    map[string]interface{}
 	SrcIP   net.IP
-	SrcMAC  []byte
 	DstIP   net.IP
+	SrcMAC  []byte
 	DstMAC  []byte
 	DstPort uint16
-	Meta    map[string]interface{}
 }
 
 func IPPortPairs(ctx context.Context, r *Range) (<-chan *Request, error) {

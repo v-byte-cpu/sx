@@ -11,10 +11,10 @@ import (
 )
 
 type Range struct {
-	SrcIP     net.IP
-	SrcMAC    net.HardwareAddr
 	Interface *net.Interface
 	Subnet    *net.IPNet
+	SrcIP     net.IP
+	SrcMAC    net.HardwareAddr
 	StartPort uint16
 	EndPort   uint16
 }
