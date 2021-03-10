@@ -39,21 +39,33 @@ func ParseIPNet(subnet string) (*net.IPNet, error) {
 }
 
 func GetSubnetInterface(dstSubnet *net.IPNet) (*net.Interface, net.IP, error) {
-	dstSubnetIP := dstSubnet.IP.Mask(dstSubnet.Mask)
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, nil, err
 	}
 	for _, iface := range ifaces {
-		addrs, err := iface.Addrs()
+		iface := iface
+		ifaceIP, err := GetSubnetInterfaceIP(&iface, dstSubnet)
 		if err != nil {
 			return nil, nil, err
 		}
-		for _, addr := range addrs {
-			if ipnet, ok := addr.(*net.IPNet); ok && ipnet.Contains(dstSubnetIP) {
-				return &iface, ipnet.IP.To4(), nil
-			}
+		if ifaceIP != nil {
+			return &iface, ifaceIP.To4(), nil
 		}
 	}
 	return nil, nil, ErrSubnetInterface
+}
+
+func GetSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (net.IP, error) {
+	dstSubnetIP := dstSubnet.IP.Mask(dstSubnet.Mask)
+	addrs, err := iface.Addrs()
+	if err != nil {
+		return nil, err
+	}
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.Contains(dstSubnetIP) {
+			return ipnet.IP.To4(), nil
+		}
+	}
+	return nil, nil
 }

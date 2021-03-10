@@ -55,6 +55,9 @@ var arpCmd = &cobra.Command{
 			if iface, err = net.InterfaceByName(interfaceFlag); err != nil {
 				return err
 			}
+			if srcIP, err = ip.GetSubnetInterfaceIP(iface, dstSubnet); err != nil {
+				return err
+			}
 		} else {
 			if iface, srcIP, err = ip.GetSubnetInterface(dstSubnet); err != nil {
 				return err
