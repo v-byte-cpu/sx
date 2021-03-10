@@ -11,52 +11,8 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
 )
-
-func chanErrorToSlice(t *testing.T, in <-chan error, expectedLen int, timeout time.Duration) []error {
-	t.Helper()
-	result := []error{}
-loop:
-	for {
-		select {
-		case data, ok := <-in:
-			if !ok {
-				break loop
-			}
-			if len(result) == expectedLen {
-				require.FailNow(t, "chan size is greater than expected, data:", data)
-			}
-			result = append(result, data)
-		case <-time.After(timeout):
-			t.Fatal("read timeout")
-		}
-	}
-	return result
-}
-
-// generics would be helpful :)
-func chanRequestToSlice(t *testing.T, in <-chan *Request, expectedLen int, timeout time.Duration) []*Request {
-	t.Helper()
-	result := []*Request{}
-loop:
-	for {
-		select {
-		case data, ok := <-in:
-			if !ok {
-				break loop
-			}
-			if len(result) == expectedLen {
-				require.FailNow(t, "chan size is greater than expected, data:", data)
-			}
-			result = append(result, data)
-		case <-time.After(timeout):
-			t.Fatal("read timeout")
-		}
-	}
-	return result
-}
 
 func TestMergeErrChanEmptyChannels(t *testing.T) {
 	t.Parallel()
@@ -64,9 +20,10 @@ func TestMergeErrChanEmptyChannels(t *testing.T) {
 	close(c1)
 	c2 := make(chan error)
 	close(c2)
-	out := mergeErrChan(context.Background(), c1, c2)
 
-	result := chanErrorToSlice(t, out, 0, 3*time.Second)
+	out := mergeErrChan(context.Background(), c1, c2)
+	result := chanToSlice(t, chanErrToGeneric(out), 0)
+
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -77,11 +34,12 @@ func TestMergeErrChanOneElementAndEmptyChannel(t *testing.T) {
 	close(c1)
 	c2 := make(chan error)
 	close(c2)
-	out := mergeErrChan(context.Background(), c1, c2)
 
-	result := chanErrorToSlice(t, out, 1, 3*time.Second)
+	out := mergeErrChan(context.Background(), c1, c2)
+	result := chanToSlice(t, chanErrToGeneric(out), 1)
+
 	assert.Equal(t, 1, len(result), "error slice size is invalid")
-	assert.Error(t, result[0])
+	assert.Error(t, result[0].(error))
 }
 
 func TestMergeErrChanTwoElements(t *testing.T) {
@@ -92,12 +50,13 @@ func TestMergeErrChanTwoElements(t *testing.T) {
 	c2 := make(chan error, 1)
 	c2 <- errors.New("test error")
 	close(c2)
-	out := mergeErrChan(context.Background(), c1, c2)
 
-	result := chanErrorToSlice(t, out, 2, 3*time.Second)
+	out := mergeErrChan(context.Background(), c1, c2)
+	result := chanToSlice(t, chanErrToGeneric(out), 2)
+
 	assert.Equal(t, 2, len(result), "error slice size is invalid")
-	assert.Error(t, result[0])
-	assert.Error(t, result[1])
+	assert.Error(t, result[0].(error))
+	assert.Error(t, result[1].(error))
 }
 
 func TestMergeErrChanContextExit(t *testing.T) {
@@ -109,9 +68,10 @@ func TestMergeErrChanContextExit(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	out := mergeErrChan(ctx, c1, c2)
 
-	result := chanErrorToSlice(t, out, 0, 3*time.Second)
+	out := mergeErrChan(ctx, c1, c2)
+	result := chanToSlice(t, chanErrToGeneric(out), 0)
+
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -147,8 +107,8 @@ func TestEngineStartCollectsAllErrors(t *testing.T) {
 		EndPort:   888,
 	})
 
-	result := chanErrorToSlice(t, out, 2, 3*time.Second)
+	result := chanToSlice(t, chanErrToGeneric(out), 2)
 	assert.Equal(t, 2, len(result), "error slice is invalid")
-	assert.Error(t, result[0])
-	assert.Error(t, result[1])
+	assert.Error(t, result[0].(error))
+	assert.Error(t, result[1].(error))
 }

@@ -7,7 +7,6 @@ import (
 	"net"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
@@ -64,8 +63,8 @@ func TestReceivePacketsWithUnrecoverableError(t *testing.T) {
 			p := NewMockProcessor(ctrl)
 			r := NewReceiver(sr, p)
 
-			out := chanErrToGeneric(r.ReceivePackets(context.Background()))
-			result := chanToSlice(t, out, 0, 3*time.Second)
+			out := r.ReceivePackets(context.Background())
+			result := chanToSlice(t, chanErrToGeneric(out), 0)
 			assert.Equal(t, 0, len(result), "error slice is not empty")
 		})
 	}
@@ -90,8 +89,8 @@ func TestReceivePacketsOnePacket(t *testing.T) {
 		ProcessPacketData(expectedData, newCaptureInfo()).Return(nil)
 	r := NewReceiver(sr, p)
 
-	out := chanErrToGeneric(r.ReceivePackets(context.Background()))
-	result := chanToSlice(t, out, 0, 3*time.Second)
+	out := r.ReceivePackets(context.Background())
+	result := chanToSlice(t, chanErrToGeneric(out), 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
@@ -113,8 +112,8 @@ func TestReceivePacketsOnePacketWithProcessError(t *testing.T) {
 		ProcessPacketData(notNil, notNil).Return(errors.New("process error"))
 	r := NewReceiver(sr, p)
 
-	out := chanErrToGeneric(r.ReceivePackets(context.Background()))
-	result := chanToSlice(t, out, 1, 3*time.Second)
+	out := r.ReceivePackets(context.Background())
+	result := chanToSlice(t, chanErrToGeneric(out), 1)
 	assert.Equal(t, 1, len(result), "error slice is invalid")
 	assert.Error(t, result[0].(error))
 }
@@ -157,8 +156,8 @@ func TestReceivePacketsOnePacketWithRetryError(t *testing.T) {
 				ProcessPacketData(expectedData, newCaptureInfo()).Return(nil)
 			r := NewReceiver(sr, p)
 
-			out := chanErrToGeneric(r.ReceivePackets(context.Background()))
-			result := chanToSlice(t, out, 0, 3*time.Second)
+			out := r.ReceivePackets(context.Background())
+			result := chanToSlice(t, chanErrToGeneric(out), 0)
 			assert.Equal(t, 0, len(result), "error slice is not empty")
 		})
 	}
@@ -184,8 +183,8 @@ func TestReceivePacketsOnePacketWithUnknownError(t *testing.T) {
 		ProcessPacketData(expectedData, newCaptureInfo()).Return(nil)
 	r := NewReceiver(sr, p)
 
-	out := chanErrToGeneric(r.ReceivePackets(context.Background()))
-	result := chanToSlice(t, out, 1, 3*time.Second)
+	out := r.ReceivePackets(context.Background())
+	result := chanToSlice(t, chanErrToGeneric(out), 1)
 	assert.Equal(t, 1, len(result), "error slice length is invalid")
 	assert.Error(t, result[0].(error))
 }
@@ -211,7 +210,7 @@ func TestReceivePacketsOnePacketWithContextCancel(t *testing.T) {
 		})
 	r := NewReceiver(sr, p)
 
-	out := chanErrToGeneric(r.ReceivePackets(ctx))
-	result := chanToSlice(t, out, 0, 3*time.Second)
+	out := r.ReceivePackets(ctx)
+	result := chanToSlice(t, chanErrToGeneric(out), 0)
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }

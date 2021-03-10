@@ -9,25 +9,25 @@ import (
 	"golang.org/x/net/bpf"
 )
 
-type AfPacketSource struct {
+type Source struct {
 	handle *afp.TPacket
 }
 
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
-var _ packet.ReadWriter = (*AfPacketSource)(nil)
+var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string) (*AfPacketSource, error) {
+func NewPacketSource(iface string) (*Source, error) {
 	handle, err := afp.NewTPacket(afp.SocketRaw, afp.OptInterface(iface))
 	if err != nil {
 		return nil, err
 	}
-	return &AfPacketSource{handle}, nil
+	return &Source{handle}, nil
 }
 
 // maxPacketLength is the maximum size of packets to capture in bytes.
 // pcap calls it "snaplen" and default value used in tcpdump is 262144 bytes,
 // that is redundant for most scans, see pcap(3) and tcpdump(1) for more info
-func (s *AfPacketSource) SetBPFFilter(bpfFilter string, maxPacketLength int) error {
+func (s *Source) SetBPFFilter(bpfFilter string, maxPacketLength int) error {
 	pcapBPF, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, maxPacketLength, bpfFilter)
 	if err != nil {
 		return err
@@ -45,15 +45,15 @@ func (s *AfPacketSource) SetBPFFilter(bpfFilter string, maxPacketLength int) err
 	return s.handle.SetBPF(bpfIns)
 }
 
-func (s *AfPacketSource) Close() {
+func (s *Source) Close() {
 	s.handle.Close()
 }
 
-func (s *AfPacketSource) ReadPacketData() ([]byte, *gopacket.CaptureInfo, error) {
+func (s *Source) ReadPacketData() ([]byte, *gopacket.CaptureInfo, error) {
 	data, ci, err := s.handle.ZeroCopyReadPacketData()
 	return data, &ci, err
 }
 
-func (s *AfPacketSource) WritePacketData(pkt []byte) error {
+func (s *Source) WritePacketData(pkt []byte) error {
 	return s.handle.WritePacketData(pkt)
 }

@@ -1,4 +1,4 @@
-package packet
+package scan
 
 import (
 	"testing"

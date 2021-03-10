@@ -74,14 +74,39 @@ var arpCmd = &cobra.Command{
 			}
 		}
 
-		r := &scan.Range{Subnet: dstSubnet, Interface: iface, SrcIP: srcIP, SrcMAC: srcMAC}
+		r := &scan.Range{Subnet: dstSubnet, Interface: iface, SrcIP: srcIP.To4(), SrcMAC: srcMAC}
 		return startEngine(r)
 	},
 }
 
-func startEngine(r *scan.Range) error {
+func logResults(logger *zap.Logger, results <-chan *arp.ScanResult) {
 	bw := bufio.NewWriter(os.Stdout)
 	defer bw.Flush()
+	for result := range results {
+		// TODO refactor it using logger facade interface
+		if jsonFlag {
+			data, err := result.MarshalJSON()
+			if err != nil {
+				logger.Error("arp", zap.Error(err))
+			}
+			_, err = bw.Write(data)
+			if err != nil {
+				logger.Error("arp", zap.Error(err))
+			}
+		} else {
+			_, err := bw.WriteString(result.String())
+			if err != nil {
+				logger.Error("arp", zap.Error(err))
+			}
+		}
+		err := bw.WriteByte('\n')
+		if err != nil {
+			logger.Error("arp", zap.Error(err))
+		}
+	}
+}
+
+func startEngine(r *scan.Range) error {
 	logger, err := zap.NewProduction()
 	if err != nil {
 		return err
@@ -108,19 +133,7 @@ func startEngine(r *scan.Range) error {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		for result := range m.Results() {
-			// TODO extract it
-			if jsonFlag {
-				data, err := result.MarshalJSON()
-				if err != nil {
-					logger.Error("arp", zap.Error(err))
-				}
-				bw.Write(data)
-			} else {
-				bw.WriteString(result.String())
-			}
-			bw.WriteByte('\n')
-		}
+		logResults(logger, m.Results())
 	}()
 
 	// start scan
