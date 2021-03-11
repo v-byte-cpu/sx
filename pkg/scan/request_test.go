@@ -4,6 +4,7 @@ import (
 	"context"
 	"net"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -71,7 +72,7 @@ func withDstPort(dstPort uint16) scanRequestOption {
 	}
 }
 
-func TestIPPortPairsWithInvalidInput(t *testing.T) {
+func TestScanRequestsWithInvalidInput(t *testing.T) {
 	tests := []struct {
 		name      string
 		startPort uint16
@@ -91,7 +92,7 @@ func TestIPPortPairsWithInvalidInput(t *testing.T) {
 	for _, vtt := range tests {
 		tt := vtt
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := IPPortPairs(context.Background(), tt.scanRange)
+			_, err := Requests(context.Background(), tt.scanRange)
 			assert.Error(t, err)
 		})
 	}
@@ -114,10 +115,10 @@ func chanPairToGeneric(in <-chan *Request) <-chan interface{} {
 	return out
 }
 
-func TestIPPortPairsWithOneIpOnePort(t *testing.T) {
+func TestScanRequestsWithOneIpOnePort(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
-	pairs, err := IPPortPairs(context.Background(),
+	pairs, err := Requests(context.Background(),
 		newScanRange(
 			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
 			withStartPort(port),
@@ -131,10 +132,10 @@ func TestIPPortPairsWithOneIpOnePort(t *testing.T) {
 	comparePairChanToSlice(t, expected, pairs)
 }
 
-func TestIPPortPairsWithOneIpTwoPorts(t *testing.T) {
+func TestScanRequestsWithOneIpTwoPorts(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
-	pairs, err := IPPortPairs(context.Background(),
+	pairs, err := Requests(context.Background(),
 		newScanRange(
 			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
 			withStartPort(port),
@@ -149,10 +150,10 @@ func TestIPPortPairsWithOneIpTwoPorts(t *testing.T) {
 	comparePairChanToSlice(t, expected, pairs)
 }
 
-func TestIPPortPairsWithTwoIpsOnePort(t *testing.T) {
+func TestScanRequestsWithTwoIpsOnePort(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
-	pairs, err := IPPortPairs(context.Background(),
+	pairs, err := Requests(context.Background(),
 		newScanRange(
 			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
 			withStartPort(port),
@@ -167,10 +168,10 @@ func TestIPPortPairsWithTwoIpsOnePort(t *testing.T) {
 	comparePairChanToSlice(t, expected, pairs)
 }
 
-func TestIPPortPairsWithFourIpsOnePort(t *testing.T) {
+func TestScanRequestsWithFourIpsOnePort(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
-	pairs, err := IPPortPairs(context.Background(),
+	pairs, err := Requests(context.Background(),
 		newScanRange(
 			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(30, 32)}),
 			withStartPort(port),
@@ -187,10 +188,10 @@ func TestIPPortPairsWithFourIpsOnePort(t *testing.T) {
 	comparePairChanToSlice(t, expected, pairs)
 }
 
-func TestIPPortPairsWithTwoIpsTwoPorts(t *testing.T) {
+func TestScanRequestsWithTwoIpsTwoPorts(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
-	pairs, err := IPPortPairs(context.Background(),
+	pairs, err := Requests(context.Background(),
 		newScanRange(
 			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
 			withStartPort(port),
@@ -205,4 +206,31 @@ func TestIPPortPairsWithTwoIpsTwoPorts(t *testing.T) {
 		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port+1)),
 	}
 	comparePairChanToSlice(t, expected, pairs)
+}
+
+func TestLiveRequestGeneratorContextExit(t *testing.T) {
+	t.Parallel()
+	rg := NewLiveRequestGenerator(5 * time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
+	defer cancel()
+	requests, err := rg.GenerateRequests(ctx, newScanRange())
+	require.NoError(t, err)
+	capacity := cap(requests)
+	cnt := 0
+	time.Sleep(1 * time.Microsecond)
+loop:
+	for {
+		select {
+		case _, ok := <-requests:
+			if !ok {
+				break loop
+			}
+			if cnt > capacity {
+				require.FailNow(t, "number of elements more than channel capacity")
+			}
+			cnt++
+		case <-time.After(waitTimeout):
+			require.FailNow(t, "wait timeout")
+		}
+	}
 }

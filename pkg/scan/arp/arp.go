@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"runtime"
+	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -16,7 +17,8 @@ import (
 )
 
 type ScanMethod struct {
-	gen             *scan.PacketMultiGenerator
+	reqgen          scan.RequestGenerator
+	pktgen          *scan.PacketMultiGenerator
 	parser          *gopacket.DecodingLayerParser
 	results         chan *ScanResult
 	internalResults chan *ScanResult
@@ -27,6 +29,9 @@ type ScanMethod struct {
 	rcvARP       layers.ARP
 	rcvMacPrefix [3]byte
 }
+
+// Assert that arp.ScanMethod conforms to the scan.Method interface
+var _ scan.Method = (*ScanMethod)(nil)
 
 //easyjson:json
 type ScanResult struct {
@@ -39,13 +44,19 @@ func (r *ScanResult) String() string {
 	return fmt.Sprintf("%-20s %-20s %s", r.IP, r.MAC, r.Vendor)
 }
 
-// Assert that arp.ScanMethod conforms to the scan.Method interface
-var _ scan.Method = (*ScanMethod)(nil)
+func (r *ScanResult) ID() string {
+	return r.IP
+}
 
-func NewScanMethod(ctx context.Context) *ScanMethod {
-	f := newPacketFiller()
-	gen := scan.NewPacketMultiGenerator(f, runtime.NumCPU())
+type ScanMethodOption func(sm *ScanMethod)
 
+func LiveMode(rescanTimeout time.Duration) ScanMethodOption {
+	return func(sm *ScanMethod) {
+		sm.reqgen = scan.NewLiveRequestGenerator(rescanTimeout)
+	}
+}
+
+func NewScanMethod(ctx context.Context, opts ...ScanMethodOption) *ScanMethod {
 	results := make(chan *ScanResult, 1000)
 	internalResults := make(chan *ScanResult, 1000)
 
@@ -66,10 +77,20 @@ func NewScanMethod(ctx context.Context) *ScanMethod {
 	}
 	go copyChans()
 
-	sm := &ScanMethod{gen: gen, results: results, internalResults: internalResults, ctx: ctx}
+	sm := &ScanMethod{
+		ctx:             ctx,
+		results:         results,
+		internalResults: internalResults,
+		reqgen:          scan.RequestGeneratorFunc(scan.Requests),
+		pktgen:          scan.NewPacketMultiGenerator(newPacketFiller(), runtime.NumCPU()),
+	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvARP)
 	parser.IgnoreUnsupported = true
 	sm.parser = parser
+
+	for _, o := range opts {
+		o(sm)
+	}
 	return sm
 }
 
@@ -78,14 +99,14 @@ func (s *ScanMethod) Results() <-chan *ScanResult {
 }
 
 func (s *ScanMethod) Packets(ctx context.Context, r *scan.Range) <-chan *packet.BufferData {
-	pairs, err := scan.IPPortPairs(ctx, r)
+	requests, err := s.reqgen.GenerateRequests(ctx, r)
 	if err != nil {
 		out := make(chan *packet.BufferData, 1)
 		out <- &packet.BufferData{Err: err}
 		close(out)
 		return out
 	}
-	return s.gen.Packets(ctx, pairs)
+	return s.pktgen.Packets(ctx, requests)
 }
 
 func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
