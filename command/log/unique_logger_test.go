@@ -2,6 +2,7 @@ package log
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"strings"
 	"testing"
@@ -11,15 +12,7 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
-func newScanResult(ip net.IP) *arp.ScanResult {
-	return &arp.ScanResult{
-		IP:     ip.String(),
-		MAC:    net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}.String(),
-		Vendor: "Sunny Industries",
-	}
-}
-
-func TestPlainLoggerResults(t *testing.T) {
+func TestUniqueLoggerResults(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -40,7 +33,7 @@ func TestPlainLoggerResults(t *testing.T) {
 			},
 		},
 		{
-			name: "twoResults",
+			name: "twoDifferentResults",
 			expected: []byte(strings.Join([]string{
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()).String(),
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()).String(),
@@ -50,14 +43,35 @@ func TestPlainLoggerResults(t *testing.T) {
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()),
 			},
 		},
+		{
+			name:     "twoEqualResults",
+			expected: []byte(newScanResult(net.IPv4(192, 168, 0, 3).To4()).String() + "\n"),
+			results: []*arp.ScanResult{
+				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
+				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
+			},
+		},
+		{
+			name: "twoEqualResultsWithOneBetween",
+			expected: []byte(strings.Join([]string{
+				newScanResult(net.IPv4(192, 168, 0, 3).To4()).String(),
+				newScanResult(net.IPv4(192, 168, 0, 5).To4()).String(),
+			}, "\n") + "\n"),
+			results: []*arp.ScanResult{
+				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
+				newScanResult(net.IPv4(192, 168, 0, 5).To4()),
+				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 
 			var buf bytes.Buffer
-			logger, err := NewPlainLogger(&buf, "arp")
+			plainLogger, err := NewLogger(&buf, "arp")
 			require.NoError(t, err)
+			logger := NewUniqueLogger(context.Background(), plainLogger)
 
 			resultCh := make(chan *arp.ScanResult, len(tt.results))
 			for _, result := range tt.results {
@@ -66,7 +80,7 @@ func TestPlainLoggerResults(t *testing.T) {
 			close(resultCh)
 			logger.LogResults(resultCh)
 
-			assert.Equal(t, tt.expected, buf.Bytes())
+			assert.Equal(t, string(tt.expected), buf.String())
 		})
 	}
 }
