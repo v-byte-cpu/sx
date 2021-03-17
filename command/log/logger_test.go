@@ -8,10 +8,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
-func scanResultToJSON(t *testing.T, result *arp.ScanResult) string {
+func scanResultToJSON(t *testing.T, result scan.Result) string {
 	t.Helper()
 	data, err := result.MarshalJSON()
 	require.NoError(t, err)
@@ -58,7 +59,7 @@ func TestJSONLoggerResults(t *testing.T) {
 			logger, err := NewLogger(&buf, "arp", JSON())
 			require.NoError(t, err)
 
-			resultCh := make(chan *arp.ScanResult, len(tt.results))
+			resultCh := make(chan scan.Result, len(tt.results))
 			for _, result := range tt.results {
 				resultCh <- result
 			}
@@ -118,7 +119,7 @@ func TestPlainLoggerResults(t *testing.T) {
 			logger, err := NewLogger(&buf, "arp", Plain())
 			require.NoError(t, err)
 
-			resultCh := make(chan *arp.ScanResult, len(tt.results))
+			resultCh := make(chan scan.Result, len(tt.results))
 			for _, result := range tt.results {
 				resultCh <- result
 			}

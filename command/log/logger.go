@@ -5,13 +5,13 @@ import (
 	"io"
 	"time"
 
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 	"go.uber.org/zap"
 )
 
 type Logger interface {
 	Error(err error)
-	LogResults(results <-chan *arp.ScanResult)
+	LogResults(results <-chan scan.Result)
 }
 
 type FlushWriter interface {
@@ -20,7 +20,7 @@ type FlushWriter interface {
 }
 
 type ResultWriter interface {
-	Write(w io.Writer, result *arp.ScanResult) error
+	Write(w io.Writer, result scan.Result) error
 }
 
 type logger struct {
@@ -75,7 +75,7 @@ func (l *logger) Error(err error) {
 	l.zapl.Error(l.label, zap.Error(err))
 }
 
-func (l *logger) LogResults(results <-chan *arp.ScanResult) {
+func (l *logger) LogResults(results <-chan scan.Result) {
 	bw := bufio.NewWriter(l.w)
 	defer bw.Flush()
 	var err error

@@ -3,7 +3,7 @@ package log
 import (
 	"context"
 
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
 type UniqueLogger struct {
@@ -19,12 +19,12 @@ func (l *UniqueLogger) Error(err error) {
 	l.logger.Error(err)
 }
 
-func (l *UniqueLogger) LogResults(results <-chan *arp.ScanResult) {
+func (l *UniqueLogger) LogResults(results <-chan scan.Result) {
 	l.logger.LogResults(l.uniqResults(results))
 }
 
-func (l *UniqueLogger) uniqResults(in <-chan *arp.ScanResult) <-chan *arp.ScanResult {
-	results := make(chan *arp.ScanResult, cap(in))
+func (l *UniqueLogger) uniqResults(in <-chan scan.Result) <-chan scan.Result {
+	results := make(chan scan.Result, cap(in))
 	go func() {
 		defer close(results)
 		var member struct{}

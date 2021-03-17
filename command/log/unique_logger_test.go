@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
 func TestUniqueLoggerResults(t *testing.T) {
@@ -18,7 +18,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 	tests := []struct {
 		name     string
 		expected []byte
-		results  []*arp.ScanResult
+		results  []scan.Result
 	}{
 		{
 			name:     "emptyResults",
@@ -28,7 +28,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 		{
 			name:     "oneResult",
 			expected: []byte(newScanResult(net.IPv4(192, 168, 0, 3).To4()).String() + "\n"),
-			results: []*arp.ScanResult{
+			results: []scan.Result{
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
 			},
 		},
@@ -38,7 +38,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()).String(),
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()).String(),
 			}, "\n") + "\n"),
-			results: []*arp.ScanResult{
+			results: []scan.Result{
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()),
 			},
@@ -46,7 +46,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 		{
 			name:     "twoEqualResults",
 			expected: []byte(newScanResult(net.IPv4(192, 168, 0, 3).To4()).String() + "\n"),
-			results: []*arp.ScanResult{
+			results: []scan.Result{
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
 			},
@@ -57,7 +57,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()).String(),
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()).String(),
 			}, "\n") + "\n"),
-			results: []*arp.ScanResult{
+			results: []scan.Result{
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
 				newScanResult(net.IPv4(192, 168, 0, 5).To4()),
 				newScanResult(net.IPv4(192, 168, 0, 3).To4()),
@@ -73,7 +73,7 @@ func TestUniqueLoggerResults(t *testing.T) {
 			require.NoError(t, err)
 			logger := NewUniqueLogger(context.Background(), plainLogger)
 
-			resultCh := make(chan *arp.ScanResult, len(tt.results))
+			resultCh := make(chan scan.Result, len(tt.results))
 			for _, result := range tt.results {
 				resultCh <- result
 			}

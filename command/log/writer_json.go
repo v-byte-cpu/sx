@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
 type JSONResultWriter struct{}
 
-func (*JSONResultWriter) Write(w io.Writer, result *arp.ScanResult) error {
+func (*JSONResultWriter) Write(w io.Writer, result scan.Result) error {
 	data, err := result.MarshalJSON()
 	if err != nil {
 		return err
