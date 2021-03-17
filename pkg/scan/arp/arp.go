@@ -17,12 +17,11 @@ import (
 )
 
 type ScanMethod struct {
-	reqgen          scan.RequestGenerator
-	pktgen          *scan.PacketMultiGenerator
-	parser          *gopacket.DecodingLayerParser
-	results         chan *ScanResult
-	internalResults chan *ScanResult
-	ctx             context.Context
+	reqgen  scan.RequestGenerator
+	pktgen  *scan.PacketMultiGenerator
+	parser  *gopacket.DecodingLayerParser
+	results *scan.ResultChan
+	ctx     context.Context
 
 	rcvDecoded   []gopacket.LayerType
 	rcvEth       layers.Ethernet
@@ -57,32 +56,11 @@ func LiveMode(rescanTimeout time.Duration) ScanMethodOption {
 }
 
 func NewScanMethod(ctx context.Context, opts ...ScanMethodOption) *ScanMethod {
-	results := make(chan *ScanResult, 1000)
-	internalResults := make(chan *ScanResult, 1000)
-
-	copyChans := func() {
-		defer close(results)
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case v := <-internalResults:
-				select {
-				case <-ctx.Done():
-					return
-				case results <- v:
-				}
-			}
-		}
-	}
-	go copyChans()
-
 	sm := &ScanMethod{
-		ctx:             ctx,
-		results:         results,
-		internalResults: internalResults,
-		reqgen:          scan.RequestGeneratorFunc(scan.Requests),
-		pktgen:          scan.NewPacketMultiGenerator(newPacketFiller(), runtime.NumCPU()),
+		ctx:     ctx,
+		results: scan.NewResultChan(ctx, 1000),
+		reqgen:  scan.RequestGeneratorFunc(scan.Requests),
+		pktgen:  scan.NewPacketMultiGenerator(newPacketFiller(), runtime.NumCPU()),
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvARP)
 	parser.IgnoreUnsupported = true
@@ -94,8 +72,8 @@ func NewScanMethod(ctx context.Context, opts ...ScanMethodOption) *ScanMethod {
 	return sm
 }
 
-func (s *ScanMethod) Results() <-chan *ScanResult {
-	return s.results
+func (s *ScanMethod) Results() <-chan scan.Result {
+	return s.results.Chan()
 }
 
 func (s *ScanMethod) Packets(ctx context.Context, r *scan.Range) <-chan *packet.BufferData {
@@ -126,14 +104,11 @@ func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) err
 			copy(s.rcvMacPrefix[:], s.rcvARP.SourceHwAddress[:3])
 			hwVendor := macs.ValidMACPrefixMap[s.rcvMacPrefix]
 
-			select {
-			case <-s.ctx.Done():
-			case s.internalResults <- &ScanResult{
+			s.results.Put(&ScanResult{
 				IP:     net.IP(s.rcvARP.SourceProtAddress).String(),
 				MAC:    net.HardwareAddr(s.rcvARP.SourceHwAddress).String(),
 				Vendor: hwVendor,
-			}:
-			}
+			})
 			return nil
 		}
 	}

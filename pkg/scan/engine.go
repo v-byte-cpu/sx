@@ -35,8 +35,8 @@ func NewEngine(ps PacketSource, s packet.Sender, r packet.Receiver) *Engine {
 
 func (e *Engine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
 	packets := e.src.Packets(ctx, r)
-	errc1 := e.rcv.ReceivePackets(ctx)
-	done, errc2 := e.snd.SendPackets(ctx, packets)
+	done, errc1 := e.snd.SendPackets(ctx, packets)
+	errc2 := e.rcv.ReceivePackets(ctx)
 	return done, mergeErrChan(ctx, errc1, errc2)
 }
 
