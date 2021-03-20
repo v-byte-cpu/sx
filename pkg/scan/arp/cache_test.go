@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,6 +30,77 @@ func TestCacheDelete(t *testing.T) {
 	cache.Put(net.IPv4(192, 168, 0, 2).To4(), net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6})
 	cache.Delete(net.IPv4(192, 168, 0, 2).To4())
 	require.Nil(t, cache.Get(net.IPv4(192, 168, 0, 2).To4()))
+}
+
+func TestFillCache(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []*ipMacPair
+		err      bool
+	}{
+		{
+			name:  "oneIP",
+			input: `{"ip":"192.168.0.2","mac":"01:02:03:04:05:06"}`,
+			expected: []*ipMacPair{
+				{
+					ip:  net.IPv4(192, 168, 0, 2).To4(),
+					mac: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+				},
+			},
+		},
+		{
+			name: "twoIP",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.2","mac":"01:02:03:04:05:06"}`,
+				`{"ip":"192.168.0.3","mac":"11:12:13:14:15:16"}`,
+			}, "\n"),
+			expected: []*ipMacPair{
+				{
+					ip:  net.IPv4(192, 168, 0, 2).To4(),
+					mac: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+				},
+				{
+					ip:  net.IPv4(192, 168, 0, 3).To4(),
+					mac: net.HardwareAddr{0x11, 0x12, 0x13, 0x14, 0x15, 0x16},
+				},
+			},
+		},
+		{
+			name:  "invalidJson",
+			input: `{"ip":"192`,
+			err:   true,
+		},
+		{
+			name:  "invalidIP",
+			input: `{"ip":"192.1680","mac":"01:02:03:04:05:06"}`,
+			err:   true,
+		},
+		{
+			name:  "invalidMAC",
+			input: `{"ip":"192.168.0.2","mac":"01:02:03"}`,
+			err:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cache := NewCache()
+			err := FillCache(cache, strings.NewReader(tt.input))
+			if tt.err {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+
+			for _, pair := range tt.expected {
+				mac := cache.Get(pair.ip)
+				require.Equal(t, pair.mac, mac)
+			}
+		})
+	}
 }
 
 type ipMacPair struct {

@@ -10,6 +10,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
 func TestProcessPacketData(t *testing.T) {
@@ -22,7 +23,8 @@ func TestProcessPacketData(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sm := NewScanMethod(ctx, nil)
+		results := scan.NewResultChan(ctx, 1000)
+		sm := NewScanMethod(nil, results)
 
 		// generate packet data
 		packet := gopacket.NewSerializeBuffer()

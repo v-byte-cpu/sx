@@ -1,8 +1,11 @@
 package arp
 
 import (
+	"bufio"
 	"context"
+	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 
@@ -34,6 +37,26 @@ func (c *Cache) Delete(ip net.IP) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	delete(c.cache, ip.String())
+}
+
+func FillCache(cache *Cache, r io.Reader) error {
+	scanner := bufio.NewScanner(r)
+	for scanner.Scan() {
+		var entry ScanResult
+		if err := entry.UnmarshalJSON(scanner.Bytes()); err != nil {
+			return err
+		}
+		ip := net.ParseIP(entry.IP)
+		if ip == nil {
+			return errors.New("invalid IP")
+		}
+		mac, err := net.ParseMAC(entry.MAC)
+		if err != nil {
+			return err
+		}
+		cache.Put(ip, mac)
+	}
+	return scanner.Err()
 }
 
 type cacheReqGenerator struct {
