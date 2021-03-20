@@ -12,8 +12,8 @@ import (
 const MaxPacketLength = 64
 
 func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
-	if r.Subnet == nil {
+	if r.DstSubnet == nil {
 		return "arp", MaxPacketLength
 	}
-	return fmt.Sprintf("arp src net %s", r.Subnet.String()), MaxPacketLength
+	return fmt.Sprintf("arp src net %s", r.DstSubnet.String()), MaxPacketLength
 }

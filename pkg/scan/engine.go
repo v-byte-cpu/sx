@@ -12,7 +12,8 @@ import (
 
 type Range struct {
 	Interface *net.Interface
-	Subnet    *net.IPNet
+	DstSubnet *net.IPNet
+	SrcSubnet *net.IPNet
 	SrcIP     net.IP
 	SrcMAC    net.HardwareAddr
 	StartPort uint16
@@ -21,6 +22,26 @@ type Range struct {
 
 type PacketSource interface {
 	Packets(ctx context.Context, r *Range) <-chan *packet.BufferData
+}
+
+type packetSource struct {
+	reqgen RequestGenerator
+	pktgen PacketGenerator
+}
+
+func NewPacketSource(reqgen RequestGenerator, pktgen PacketGenerator) PacketSource {
+	return &packetSource{reqgen, pktgen}
+}
+
+func (s *packetSource) Packets(ctx context.Context, r *Range) <-chan *packet.BufferData {
+	requests, err := s.reqgen.GenerateRequests(ctx, r)
+	if err != nil {
+		out := make(chan *packet.BufferData, 1)
+		out <- &packet.BufferData{Err: err}
+		close(out)
+		return out
+	}
+	return s.pktgen.Packets(ctx, requests)
 }
 
 type Engine struct {
@@ -72,4 +93,16 @@ func mergeErrChan(ctx context.Context, channels ...<-chan error) <-chan error {
 		close(out)
 	}()
 	return out
+}
+
+type Method interface {
+	PacketSource
+	packet.Processor
+}
+
+func SetupEngine(rw packet.ReadWriter, m Method) *Engine {
+	sender := packet.NewSender(rw)
+	receiver := packet.NewReceiver(rw, m)
+	engine := NewEngine(m, sender, receiver)
+	return engine
 }

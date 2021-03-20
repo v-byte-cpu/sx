@@ -2,6 +2,7 @@ package log
 
 import (
 	"bufio"
+	"context"
 	"io"
 	"time"
 
@@ -11,7 +12,7 @@ import (
 
 type Logger interface {
 	Error(err error)
-	LogResults(results <-chan scan.Result)
+	LogResults(ctx context.Context, results <-chan scan.Result)
 }
 
 type FlushWriter interface {
@@ -75,13 +76,15 @@ func (l *logger) Error(err error) {
 	l.zapl.Error(l.label, zap.Error(err))
 }
 
-func (l *logger) LogResults(results <-chan scan.Result) {
+func (l *logger) LogResults(ctx context.Context, results <-chan scan.Result) {
 	bw := bufio.NewWriter(l.w)
 	defer bw.Flush()
 	var err error
 	timec := time.After(l.flushInterval)
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case result, ok := <-results:
 			if !ok {
 				return

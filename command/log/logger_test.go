@@ -2,9 +2,11 @@ package log
 
 import (
 	"bytes"
+	"context"
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -64,7 +66,7 @@ func TestJSONLoggerResults(t *testing.T) {
 				resultCh <- result
 			}
 			close(resultCh)
-			logger.LogResults(resultCh)
+			logger.LogResults(context.Background(), resultCh)
 
 			assert.Equal(t, string(tt.expected), buf.String())
 		})
@@ -124,9 +126,32 @@ func TestPlainLoggerResults(t *testing.T) {
 				resultCh <- result
 			}
 			close(resultCh)
-			logger.LogResults(resultCh)
+			logger.LogResults(context.Background(), resultCh)
 
 			assert.Equal(t, string(tt.expected), buf.String())
 		})
+	}
+}
+
+func TestLoggerContextExit(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		var buf bytes.Buffer
+		logger, err := NewLogger(&buf, "arp", Plain())
+		require.NoError(t, err)
+
+		logger.LogResults(ctx, nil)
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		require.Fail(t, "test timeout")
 	}
 }

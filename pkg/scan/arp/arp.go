@@ -18,7 +18,7 @@ import (
 
 type ScanMethod struct {
 	reqgen  scan.RequestGenerator
-	pktgen  *scan.PacketMultiGenerator
+	pktgen  scan.PacketGenerator
 	parser  *gopacket.DecodingLayerParser
 	results *scan.ResultChan
 	ctx     context.Context
