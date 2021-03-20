@@ -6,19 +6,15 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"runtime"
-	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/macs"
-	"github.com/v-byte-cpu/sx/pkg/packet"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
 type ScanMethod struct {
-	reqgen  scan.RequestGenerator
-	pktgen  scan.PacketGenerator
+	scan.PacketSource
 	parser  *gopacket.DecodingLayerParser
 	results *scan.ResultChan
 	ctx     context.Context
@@ -47,44 +43,20 @@ func (r *ScanResult) ID() string {
 	return r.IP
 }
 
-type ScanMethodOption func(sm *ScanMethod)
-
-func LiveMode(rescanTimeout time.Duration) ScanMethodOption {
-	return func(sm *ScanMethod) {
-		sm.reqgen = scan.NewLiveRequestGenerator(rescanTimeout)
-	}
-}
-
-func NewScanMethod(ctx context.Context, opts ...ScanMethodOption) *ScanMethod {
+func NewScanMethod(ctx context.Context, psrc scan.PacketSource) *ScanMethod {
 	sm := &ScanMethod{
-		ctx:     ctx,
-		results: scan.NewResultChan(ctx, 1000),
-		reqgen:  scan.RequestGeneratorFunc(scan.Requests),
-		pktgen:  scan.NewPacketMultiGenerator(newPacketFiller(), runtime.NumCPU()),
+		PacketSource: psrc,
+		ctx:          ctx,
+		results:      scan.NewResultChan(ctx, 1000),
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvARP)
 	parser.IgnoreUnsupported = true
 	sm.parser = parser
-
-	for _, o := range opts {
-		o(sm)
-	}
 	return sm
 }
 
 func (s *ScanMethod) Results() <-chan scan.Result {
 	return s.results.Chan()
-}
-
-func (s *ScanMethod) Packets(ctx context.Context, r *scan.Range) <-chan *packet.BufferData {
-	requests, err := s.reqgen.GenerateRequests(ctx, r)
-	if err != nil {
-		out := make(chan *packet.BufferData, 1)
-		out <- &packet.BufferData{Err: err}
-		close(out)
-		return out
-	}
-	return s.pktgen.Packets(ctx, requests)
 }
 
 func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
@@ -115,13 +87,13 @@ func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) err
 	return nil
 }
 
-type packetFiller struct{}
+type PacketFiller struct{}
 
-func newPacketFiller() *packetFiller {
-	return &packetFiller{}
+func NewPacketFiller() *PacketFiller {
+	return &PacketFiller{}
 }
 
-func (*packetFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) error {
+func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) error {
 	eth := &layers.Ethernet{
 		SrcMAC:       pair.SrcMAC,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
