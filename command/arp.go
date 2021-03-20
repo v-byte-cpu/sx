@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"time"
 
@@ -48,11 +49,7 @@ var arpCmd = &cobra.Command{
 			logger = log.NewUniqueLogger(logger)
 		}
 
-		var opts []arp.ScanMethodOption
-		if arpLiveModeFlag {
-			opts = append(opts, arp.LiveMode(1*time.Second))
-		}
-		m := arp.NewScanMethod(ctx, opts...)
+		m := newARPScanMethod(ctx)
 
 		return startEngine(ctx, &engineConfig{
 			logger:     logger,
@@ -61,4 +58,14 @@ var arpCmd = &cobra.Command{
 			bpfFilter:  arp.BPFFilter,
 		})
 	},
+}
+
+func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
+	var reqgen scan.RequestGenerator = scan.RequestGeneratorFunc(scan.Requests)
+	if arpLiveModeFlag {
+		reqgen = scan.NewLiveRequestGenerator(1 * time.Second)
+	}
+	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
+	psrc := scan.NewPacketSource(reqgen, pktgen)
+	return arp.NewScanMethod(ctx, psrc)
 }

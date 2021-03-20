@@ -22,7 +22,7 @@ func TestProcessPacketData(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		sm := NewScanMethod(ctx)
+		sm := NewScanMethod(ctx, nil)
 
 		// generate packet data
 		packet := gopacket.NewSerializeBuffer()
