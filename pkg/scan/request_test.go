@@ -16,7 +16,7 @@ func newScanRange(opts ...scanRangeOption) *Range {
 		SrcMAC:    net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		StartPort: 22,
 		EndPort:   888,
-		Subnet: &net.IPNet{
+		DstSubnet: &net.IPNet{
 			IP:   net.IPv4(192, 168, 0, 0),
 			Mask: net.CIDRMask(24, 32),
 		},
@@ -43,7 +43,7 @@ func withEndPort(endPort uint16) scanRangeOption {
 
 func withSubnet(subnet *net.IPNet) scanRangeOption {
 	return func(sr *Range) {
-		sr.Subnet = subnet
+		sr.DstSubnet = subnet
 	}
 }
 
@@ -115,97 +115,110 @@ func chanPairToGeneric(in <-chan *Request) <-chan interface{} {
 	return out
 }
 
-func TestScanRequestsWithOneIpOnePort(t *testing.T) {
+func TestScanRequests(t *testing.T) {
 	t.Parallel()
-	port := uint16(888)
-	pairs, err := Requests(context.Background(),
-		newScanRange(
-			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
-			withStartPort(port),
-			withEndPort(port),
-		))
-	assert.NoError(t, err)
 
-	expected := []interface{}{
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
+	tests := []struct {
+		name     string
+		in       *Range
+		expected []interface{}
+	}{
+		{
+			name: "OneIpOnePort",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withStartPort(888),
+				withEndPort(888),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
+			},
+		},
+		{
+			name: "OneIpTwoPorts",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withStartPort(888),
+				withEndPort(889),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(889)),
+			},
+		},
+		{
+			name: "TwoIpsOnePort",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withStartPort(888),
+				withEndPort(888),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
+			},
+		},
+		{
+			name: "FourIpsOnePort",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(30, 32)}),
+				withStartPort(888),
+				withEndPort(888),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 3).To4()), withDstPort(888)),
+			},
+		},
+		{
+			name: "TwoIpsTwoPorts",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withStartPort(888),
+				withEndPort(889),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(889)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(889)),
+			},
+		},
+		{
+			name: "OneIpPortOverflow",
+			in: newScanRange(
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withStartPort(65535),
+				withEndPort(65535),
+			),
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(65535)),
+			},
+		},
 	}
-	comparePairChanToSlice(t, expected, pairs)
-}
 
-func TestScanRequestsWithOneIpTwoPorts(t *testing.T) {
-	t.Parallel()
-	port := uint16(888)
-	pairs, err := Requests(context.Background(),
-		newScanRange(
-			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
-			withStartPort(port),
-			withEndPort(port+1),
-		))
-	assert.NoError(t, err)
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	expected := []interface{}{
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port+1)),
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				pairs, err := Requests(context.Background(), tt.in)
+				require.NoError(t, err)
+				comparePairChanToSlice(t, tt.expected, pairs)
+			}()
+			select {
+			case <-done:
+			case <-time.After(waitTimeout):
+				require.Fail(t, "test timeout")
+			}
+		})
 	}
-	comparePairChanToSlice(t, expected, pairs)
-}
-
-func TestScanRequestsWithTwoIpsOnePort(t *testing.T) {
-	t.Parallel()
-	port := uint16(888)
-	pairs, err := Requests(context.Background(),
-		newScanRange(
-			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
-			withStartPort(port),
-			withEndPort(port),
-		))
-	assert.NoError(t, err)
-
-	expected := []interface{}{
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
-	}
-	comparePairChanToSlice(t, expected, pairs)
-}
-
-func TestScanRequestsWithFourIpsOnePort(t *testing.T) {
-	t.Parallel()
-	port := uint16(888)
-	pairs, err := Requests(context.Background(),
-		newScanRange(
-			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(30, 32)}),
-			withStartPort(port),
-			withEndPort(port),
-		))
-	assert.NoError(t, err)
-
-	expected := []interface{}{
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 3).To4()), withDstPort(port)),
-	}
-	comparePairChanToSlice(t, expected, pairs)
-}
-
-func TestScanRequestsWithTwoIpsTwoPorts(t *testing.T) {
-	t.Parallel()
-	port := uint16(888)
-	pairs, err := Requests(context.Background(),
-		newScanRange(
-			withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
-			withStartPort(port),
-			withEndPort(port+1),
-		))
-	assert.NoError(t, err)
-
-	expected := []interface{}{
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(port+1)),
-		newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(port+1)),
-	}
-	comparePairChanToSlice(t, expected, pairs)
 }
 
 func TestLiveRequestGeneratorContextExit(t *testing.T) {

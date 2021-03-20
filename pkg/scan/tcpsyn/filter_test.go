@@ -1,4 +1,4 @@
-package arp
+package tcpsyn
 
 import (
 	"net"
@@ -18,7 +18,7 @@ func TestBPFFilter(t *testing.T) {
 	}{
 		{
 			name:           "EmptySubnet",
-			expectedFilter: "arp",
+			expectedFilter: "tcp",
 			scanRange:      &scan.Range{},
 		},
 		{
@@ -29,7 +29,7 @@ func TestBPFFilter(t *testing.T) {
 					Mask: net.CIDRMask(24, 32),
 				},
 			},
-			expectedFilter: "arp src net 192.168.0.0/24",
+			expectedFilter: "tcp and ip src net 192.168.0.0/24",
 		},
 	}
 

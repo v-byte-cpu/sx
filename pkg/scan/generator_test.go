@@ -166,7 +166,27 @@ func TestMultiGeneratorPacketsWithTwoPairs(t *testing.T) {
 	assert.NotNil(t, result2.Buf)
 }
 
-func TestGeneratorPacketsWithOnePairReturnsError(t *testing.T) {
+func TestGeneratorPacketsReturnsRequestError(t *testing.T) {
+	t.Parallel()
+
+	in := make(chan *Request, 1)
+	in <- &Request{Err: errors.New("request error")}
+	close(in)
+
+	ctrl := gomock.NewController(t)
+	f := NewMockPacketFiller(ctrl)
+	g := NewPacketGenerator(f)
+
+	out := g.Packets(context.Background(), in)
+	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+
+	assert.Equal(t, 1, len(results), "result size is invalid")
+	result := results[0].(*packet.BufferData)
+	assert.Error(t, result.Err)
+	assert.Nil(t, result.Buf)
+}
+
+func TestGeneratorPacketsReturnsFillError(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
 
@@ -191,7 +211,27 @@ func TestGeneratorPacketsWithOnePairReturnsError(t *testing.T) {
 	assert.Nil(t, result.Buf)
 }
 
-func TestMultiGeneratorPacketsWithOnePairReturnsError(t *testing.T) {
+func TestMultiGeneratorPacketsReturnsRequestError(t *testing.T) {
+	t.Parallel()
+
+	in := make(chan *Request, 1)
+	in <- &Request{Err: errors.New("request error")}
+	close(in)
+
+	ctrl := gomock.NewController(t)
+	f := NewMockPacketFiller(ctrl)
+	g := NewPacketMultiGenerator(f, runtime.NumCPU())
+
+	out := g.Packets(context.Background(), in)
+	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+
+	assert.Equal(t, 1, len(results), "result size is invalid")
+	result := results[0].(*packet.BufferData)
+	assert.Error(t, result.Err)
+	assert.Nil(t, result.Buf)
+}
+
+func TestMultiGeneratorPacketsReturnsFillError(t *testing.T) {
 	t.Parallel()
 	port := uint16(888)
 

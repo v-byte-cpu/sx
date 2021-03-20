@@ -5,10 +5,12 @@
 package scan
 
 import (
+	context "context"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
 	gopacket "github.com/google/gopacket"
+	packet "github.com/v-byte-cpu/sx/pkg/packet"
 )
 
 // MockPacketFiller is a mock of PacketFiller interface.
@@ -46,4 +48,41 @@ func (m *MockPacketFiller) Fill(packet gopacket.SerializeBuffer, pair *Request) 
 func (mr *MockPacketFillerMockRecorder) Fill(packet, pair interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fill", reflect.TypeOf((*MockPacketFiller)(nil).Fill), packet, pair)
+}
+
+// MockPacketGenerator is a mock of PacketGenerator interface.
+type MockPacketGenerator struct {
+	ctrl     *gomock.Controller
+	recorder *MockPacketGeneratorMockRecorder
+}
+
+// MockPacketGeneratorMockRecorder is the mock recorder for MockPacketGenerator.
+type MockPacketGeneratorMockRecorder struct {
+	mock *MockPacketGenerator
+}
+
+// NewMockPacketGenerator creates a new mock instance.
+func NewMockPacketGenerator(ctrl *gomock.Controller) *MockPacketGenerator {
+	mock := &MockPacketGenerator{ctrl: ctrl}
+	mock.recorder = &MockPacketGeneratorMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPacketGenerator) EXPECT() *MockPacketGeneratorMockRecorder {
+	return m.recorder
+}
+
+// Packets mocks base method.
+func (m *MockPacketGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Packets", ctx, in)
+	ret0, _ := ret[0].(<-chan *packet.BufferData)
+	return ret0
+}
+
+// Packets indicates an expected call of Packets.
+func (mr *MockPacketGeneratorMockRecorder) Packets(ctx, in interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Packets", reflect.TypeOf((*MockPacketGenerator)(nil).Packets), ctx, in)
 }

@@ -14,15 +14,19 @@ type PacketFiller interface {
 	Fill(packet gopacket.SerializeBuffer, pair *Request) error
 }
 
-type PacketGenerator struct {
+type PacketGenerator interface {
+	Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData
+}
+
+type packetGenerator struct {
 	filler PacketFiller
 }
 
-func NewPacketGenerator(filler PacketFiller) *PacketGenerator {
-	return &PacketGenerator{filler}
+func NewPacketGenerator(filler PacketFiller) PacketGenerator {
+	return &packetGenerator{filler}
 }
 
-func (g *PacketGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
+func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
 	out := make(chan *packet.BufferData)
 	go func() {
 		defer close(out)
@@ -34,30 +38,42 @@ func (g *PacketGenerator) Packets(ctx context.Context, in <-chan *Request) <-cha
 				if !ok {
 					return
 				}
+				if pair.Err != nil {
+					writeBufToChan(ctx, out, &packet.BufferData{Err: pair.Err})
+					continue
+				}
 				// TODO buffer pool
 				buf := gopacket.NewSerializeBuffer()
 				if err := g.filler.Fill(buf, pair); err != nil {
-					out <- &packet.BufferData{Err: err}
+					writeBufToChan(ctx, out, &packet.BufferData{Err: err})
 					continue
 				}
-				out <- &packet.BufferData{Buf: buf}
+				writeBufToChan(ctx, out, &packet.BufferData{Buf: buf})
 			}
 		}
 	}()
 	return out
 }
 
-type PacketMultiGenerator struct {
-	gen        *PacketGenerator
+func writeBufToChan(ctx context.Context, out chan *packet.BufferData, buf *packet.BufferData) {
+	select {
+	case <-ctx.Done():
+		return
+	case out <- buf:
+	}
+}
+
+type packetMultiGenerator struct {
+	gen        *packetGenerator
 	numWorkers int
 }
 
-func NewPacketMultiGenerator(filler PacketFiller, numWorkers int) *PacketMultiGenerator {
-	gen := &PacketGenerator{filler}
-	return &PacketMultiGenerator{gen, numWorkers}
+func NewPacketMultiGenerator(filler PacketFiller, numWorkers int) PacketGenerator {
+	gen := &packetGenerator{filler}
+	return &packetMultiGenerator{gen, numWorkers}
 }
 
-func (g *PacketMultiGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
+func (g *packetMultiGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
 	workers := make([]<-chan *packet.BufferData, g.numWorkers)
 	for i := 0; i < g.numWorkers; i++ {
 		workers[i] = g.gen.Packets(ctx, in)

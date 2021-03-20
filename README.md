@@ -5,7 +5,9 @@
 
 The goal of this project is to create the fastest network scanner with clean and simple code.
 
-Right now, only ARP scan is supported.
+Features:
+  * ARP scan
+  * TCP SYN scan
 
 ## Building
 

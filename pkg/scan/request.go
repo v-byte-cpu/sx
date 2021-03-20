@@ -1,3 +1,5 @@
+//go:generate mockgen -package scan -destination=mock_request_test.go -source request.go
+
 package scan
 
 import (
@@ -19,6 +21,7 @@ type Request struct {
 	SrcMAC  []byte
 	DstMAC  []byte
 	DstPort uint16
+	Err     error
 }
 
 type RequestGenerator interface {
@@ -35,21 +38,21 @@ func Requests(ctx context.Context, r *Range) (<-chan *Request, error) {
 	if r.StartPort > r.EndPort {
 		return nil, ErrPortRange
 	}
-	if r.Subnet == nil {
+	if r.DstSubnet == nil {
 		return nil, ErrSubnet
 	}
 	out := make(chan *Request)
 	go func() {
 		defer close(out)
-		for port := r.StartPort; port <= r.EndPort; port++ {
-			ipnet := r.Subnet
+		for port := int(r.StartPort); port <= int(r.EndPort); port++ {
+			ipnet := r.DstSubnet
 			for ipaddr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ipaddr); ip.Inc(ipaddr) {
 				select {
 				case <-ctx.Done():
 					return
 				case out <- &Request{
 					SrcIP: r.SrcIP, SrcMAC: r.SrcMAC,
-					DstIP: ip.DupIP(ipaddr), DstPort: port}:
+					DstIP: ip.DupIP(ipaddr), DstPort: uint16(port)}:
 				}
 			}
 		}
