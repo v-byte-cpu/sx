@@ -67,5 +67,6 @@ func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
 	}
 	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
-	return arp.NewScanMethod(ctx, psrc)
+	results := scan.NewResultChan(ctx, 1000)
+	return arp.NewScanMethod(psrc, results)
 }

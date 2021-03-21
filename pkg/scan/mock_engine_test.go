@@ -9,6 +9,7 @@ import (
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
+	gopacket "github.com/google/gopacket"
 	packet "github.com/v-byte-cpu/sx/pkg/packet"
 )
 
@@ -47,4 +48,55 @@ func (m *MockPacketSource) Packets(ctx context.Context, r *Range) <-chan *packet
 func (mr *MockPacketSourceMockRecorder) Packets(ctx, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Packets", reflect.TypeOf((*MockPacketSource)(nil).Packets), ctx, r)
+}
+
+// MockMethod is a mock of Method interface.
+type MockMethod struct {
+	ctrl     *gomock.Controller
+	recorder *MockMethodMockRecorder
+}
+
+// MockMethodMockRecorder is the mock recorder for MockMethod.
+type MockMethodMockRecorder struct {
+	mock *MockMethod
+}
+
+// NewMockMethod creates a new mock instance.
+func NewMockMethod(ctrl *gomock.Controller) *MockMethod {
+	mock := &MockMethod{ctrl: ctrl}
+	mock.recorder = &MockMethodMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockMethod) EXPECT() *MockMethodMockRecorder {
+	return m.recorder
+}
+
+// Packets mocks base method.
+func (m *MockMethod) Packets(ctx context.Context, r *Range) <-chan *packet.BufferData {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Packets", ctx, r)
+	ret0, _ := ret[0].(<-chan *packet.BufferData)
+	return ret0
+}
+
+// Packets indicates an expected call of Packets.
+func (mr *MockMethodMockRecorder) Packets(ctx, r interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Packets", reflect.TypeOf((*MockMethod)(nil).Packets), ctx, r)
+}
+
+// ProcessPacketData mocks base method.
+func (m *MockMethod) ProcessPacketData(data []byte, ci *gopacket.CaptureInfo) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ProcessPacketData", data, ci)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ProcessPacketData indicates an expected call of ProcessPacketData.
+func (mr *MockMethodMockRecorder) ProcessPacketData(data, ci interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProcessPacketData", reflect.TypeOf((*MockMethod)(nil).ProcessPacketData), data, ci)
 }

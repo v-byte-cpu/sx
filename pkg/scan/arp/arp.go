@@ -3,7 +3,6 @@
 package arp
 
 import (
-	"context"
 	"fmt"
 	"net"
 
@@ -16,8 +15,7 @@ import (
 type ScanMethod struct {
 	scan.PacketSource
 	parser  *gopacket.DecodingLayerParser
-	results *scan.ResultChan
-	ctx     context.Context
+	results scan.ResultChan
 
 	rcvDecoded   []gopacket.LayerType
 	rcvEth       layers.Ethernet
@@ -43,11 +41,10 @@ func (r *ScanResult) ID() string {
 	return r.IP
 }
 
-func NewScanMethod(ctx context.Context, psrc scan.PacketSource) *ScanMethod {
+func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
 	sm := &ScanMethod{
 		PacketSource: psrc,
-		ctx:          ctx,
-		results:      scan.NewResultChan(ctx, 1000),
+		results:      results,
 	}
 	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvARP)
 	parser.IgnoreUnsupported = true
@@ -60,30 +57,21 @@ func (s *ScanMethod) Results() <-chan scan.Result {
 }
 
 func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
-	// try to exit as early as possible
-	select {
-	case <-s.ctx.Done():
-		return nil
-	default:
-	}
-
-	err := s.parser.DecodeLayers(data, &s.rcvDecoded)
-	if err != nil {
+	if err := s.parser.DecodeLayers(data, &s.rcvDecoded); err != nil {
 		return err
 	}
-	for _, layerType := range s.rcvDecoded {
-		if layerType == layers.LayerTypeARP {
-			copy(s.rcvMacPrefix[:], s.rcvARP.SourceHwAddress[:3])
-			hwVendor := macs.ValidMACPrefixMap[s.rcvMacPrefix]
-
-			s.results.Put(&ScanResult{
-				IP:     net.IP(s.rcvARP.SourceProtAddress).String(),
-				MAC:    net.HardwareAddr(s.rcvARP.SourceHwAddress).String(),
-				Vendor: hwVendor,
-			})
-			return nil
-		}
+	if len(s.rcvDecoded) != 2 {
+		return nil
 	}
+
+	copy(s.rcvMacPrefix[:], s.rcvARP.SourceHwAddress[:3])
+	hwVendor := macs.ValidMACPrefixMap[s.rcvMacPrefix]
+
+	s.results.Put(&ScanResult{
+		IP:     net.IP(s.rcvARP.SourceProtAddress).String(),
+		MAC:    net.HardwareAddr(s.rcvARP.SourceHwAddress).String(),
+		Vendor: hwVendor,
+	})
 	return nil
 }
 

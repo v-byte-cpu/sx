@@ -7,10 +7,7 @@ import (
 	"github.com/google/gopacket/routing"
 )
 
-var (
-	ErrInvalidAddr     = errors.New("invalid IP subnet/host")
-	ErrSubnetInterface = errors.New("no directly connected interfaces to destination subnet")
-)
+var ErrInvalidAddr = errors.New("invalid IP subnet/host")
 
 func Inc(ip net.IP) {
 	for j := len(ip) - 1; j >= 0; j-- {
@@ -68,7 +65,7 @@ func GetSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (ifaceIP *
 	if ifaceIP != nil {
 		return
 	}
-	// TODO fallback to remote net (routing)
+	// fallback to remote net (routing)
 	var router routing.Router
 	if router, err = routing.New(); err != nil {
 		return
@@ -96,7 +93,6 @@ func GetLocalSubnetInterface(dstSubnet *net.IPNet) (*net.Interface, *net.IPNet, 
 			return &iface, ifaceIP, nil
 		}
 	}
-	// TODO ErrSubnetInterface
 	return nil, nil, nil
 }
 

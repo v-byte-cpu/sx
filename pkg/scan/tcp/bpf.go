@@ -1,4 +1,4 @@
-package tcpsyn
+package tcp
 
 import (
 	"fmt"

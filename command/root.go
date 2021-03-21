@@ -6,6 +6,8 @@ import (
 	"io"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/packet/afpacket"
 	"github.com/v-byte-cpu/sx/pkg/scan"
+	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
 var rootCmd = &cobra.Command{
@@ -28,6 +31,7 @@ var (
 	interfaceFlag string
 	srcIPFlag     string
 	srcMACFlag    string
+	portsFlag     string
 )
 
 var (
@@ -49,6 +53,47 @@ func Main() {
 	}
 }
 
+type scanConfig struct {
+	logger    log.Logger
+	scanRange *scan.Range
+	cache     *arp.Cache
+	gatewayIP net.IP
+}
+
+func parseScanConfig(scanName, subnet, ports string) (c *scanConfig, err error) {
+	var r *scan.Range
+	if r, err = parseScanRange(subnet); err != nil {
+		return
+	}
+	if r.StartPort, r.EndPort, err = parsePortRange(ports); err != nil {
+		return
+	}
+
+	var logger log.Logger
+	if logger, err = getLogger(scanName, os.Stdout); err != nil {
+		return
+	}
+
+	// TODO file argument
+	// TODO handle pipes
+	cache := arp.NewCache()
+	if err = arp.FillCache(cache, os.Stdin); err != nil {
+		return
+	}
+
+	var gatewayIP net.IP
+	if gatewayIP, err = getGatewayIP(r); err != nil {
+		return
+	}
+	c = &scanConfig{
+		logger:    logger,
+		scanRange: r,
+		cache:     cache,
+		gatewayIP: gatewayIP,
+	}
+	return
+}
+
 func parseScanRange(subnet string) (*scan.Range, error) {
 	dstSubnet, err := ip.ParseIPNet(subnet)
 	if err != nil {
@@ -64,9 +109,7 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 
 	srcIP := srcSubnet.IP
 	if len(srcIPFlag) > 0 {
-		if srcIP = net.ParseIP(srcIPFlag); srcIP == nil {
-			return nil, errSrcIP
-		}
+		srcIP = net.ParseIP(srcIPFlag)
 	}
 	if srcIP == nil {
 		return nil, errSrcIP
@@ -88,6 +131,25 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 		SrcSubnet: srcSubnet,
 		SrcIP:     srcIP.To4(),
 		SrcMAC:    srcMAC}, nil
+}
+
+// TODO port ranges with tests
+func parsePortRange(portsRange string) (startPort, endPort uint16, err error) {
+	ports := strings.Split(portsRange, "-")
+	var port uint64
+	if port, err = strconv.ParseUint(ports[0], 10, 16); err != nil {
+		return
+	}
+	startPort = uint16(port)
+	if len(ports) < 2 {
+		endPort = startPort
+		return
+	}
+	if port, err = strconv.ParseUint(ports[1], 10, 16); err != nil {
+		return
+	}
+	endPort = uint16(port)
+	return
 }
 
 func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *net.IPNet, err error) {

@@ -12,13 +12,18 @@ type Result interface {
 	ID() string
 }
 
-type ResultChan struct {
+type ResultChan interface {
+	Put(r Result)
+	Chan() <-chan Result
+}
+
+type resultChan struct {
 	ctx             context.Context
 	results         chan Result
 	internalResults chan Result
 }
 
-func NewResultChan(ctx context.Context, capacity int) *ResultChan {
+func NewResultChan(ctx context.Context, capacity int) ResultChan {
 	results := make(chan Result, capacity)
 	internalResults := make(chan Result, capacity)
 
@@ -39,18 +44,18 @@ func NewResultChan(ctx context.Context, capacity int) *ResultChan {
 	}
 	go copyChans()
 
-	return &ResultChan{
+	return &resultChan{
 		ctx:             ctx,
 		results:         results,
 		internalResults: internalResults,
 	}
 }
 
-func (c *ResultChan) Chan() <-chan Result {
+func (c *resultChan) Chan() <-chan Result {
 	return c.results
 }
 
-func (c *ResultChan) Put(r Result) {
+func (c *resultChan) Put(r Result) {
 	select {
 	case <-c.ctx.Done():
 		return
