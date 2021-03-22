@@ -223,14 +223,13 @@ func TestScanRequests(t *testing.T) {
 
 func TestLiveRequestGeneratorContextExit(t *testing.T) {
 	t.Parallel()
+
 	rg := NewLiveRequestGenerator(5 * time.Second)
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Microsecond)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
 	requests, err := rg.GenerateRequests(ctx, newScanRange())
 	require.NoError(t, err)
-	capacity := cap(requests)
-	cnt := 0
-	time.Sleep(1 * time.Microsecond)
+	// consume all requests
 loop:
 	for {
 		select {
@@ -238,12 +237,8 @@ loop:
 			if !ok {
 				break loop
 			}
-			if cnt > capacity {
-				require.FailNow(t, "number of elements more than channel capacity")
-			}
-			cnt++
 		case <-time.After(waitTimeout):
-			require.FailNow(t, "wait timeout")
+			require.Fail(t, "test timeout")
 		}
 	}
 }
