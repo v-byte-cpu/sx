@@ -16,6 +16,7 @@ const (
 	SYNScanType  = "tcpsyn"
 	FINScanType  = "tcpfin"
 	NULLScanType = "tcpnull"
+	XmasScanType = "tcpxmas"
 )
 
 //easyjson:json
