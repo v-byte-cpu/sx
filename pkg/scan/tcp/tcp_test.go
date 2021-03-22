@@ -181,7 +181,7 @@ func TestProcessPacketData(t *testing.T) {
 			require.FailNow(t, "results chan is empty")
 		}
 		tcpResult := result.(*ScanResult)
-		assert.Equal(t, "syn", tcpResult.ScanType)
+		assert.Equal(t, SYNScanType, tcpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), tcpResult.IP)
 		assert.Equal(t, uint16(22), tcpResult.Port)
 
