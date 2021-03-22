@@ -27,11 +27,11 @@ var rootCmd = &cobra.Command{
 }
 
 var (
-	jsonFlag      bool
-	interfaceFlag string
-	srcIPFlag     string
-	srcMACFlag    string
-	portsFlag     string
+	cliJSONFlag      bool
+	cliInterfaceFlag string
+	cliSrcIPFlag     string
+	cliSrcMACFlag    string
+	cliPortsFlag     string
 )
 
 var (
@@ -41,10 +41,10 @@ var (
 )
 
 func init() {
-	rootCmd.PersistentFlags().BoolVar(&jsonFlag, "json", false, "enable JSON output")
-	rootCmd.PersistentFlags().StringVarP(&interfaceFlag, "iface", "i", "", "set interface to send/receive packets")
-	rootCmd.PersistentFlags().StringVar(&srcIPFlag, "srcip", "", "set source IP address for generated packets")
-	rootCmd.PersistentFlags().StringVar(&srcMACFlag, "srcmac", "", "set source MAC address for generated packets")
+	rootCmd.PersistentFlags().BoolVar(&cliJSONFlag, "json", false, "enable JSON output")
+	rootCmd.PersistentFlags().StringVarP(&cliInterfaceFlag, "iface", "i", "", "set interface to send/receive packets")
+	rootCmd.PersistentFlags().StringVar(&cliSrcIPFlag, "srcip", "", "set source IP address for generated packets")
+	rootCmd.PersistentFlags().StringVar(&cliSrcMACFlag, "srcmac", "", "set source MAC address for generated packets")
 }
 
 func Main() {
@@ -108,16 +108,16 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 	}
 
 	srcIP := srcSubnet.IP
-	if len(srcIPFlag) > 0 {
-		srcIP = net.ParseIP(srcIPFlag)
+	if len(cliSrcIPFlag) > 0 {
+		srcIP = net.ParseIP(cliSrcIPFlag)
 	}
 	if srcIP == nil {
 		return nil, errSrcIP
 	}
 
 	srcMAC := iface.HardwareAddr
-	if len(srcMACFlag) > 0 {
-		if srcMAC, err = net.ParseMAC(srcMACFlag); err != nil {
+	if len(cliSrcMACFlag) > 0 {
+		if srcMAC, err = net.ParseMAC(cliSrcMACFlag); err != nil {
 			return nil, err
 		}
 	}
@@ -153,10 +153,10 @@ func parsePortRange(portsRange string) (startPort, endPort uint16, err error) {
 }
 
 func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *net.IPNet, err error) {
-	if len(interfaceFlag) == 0 {
+	if len(cliInterfaceFlag) == 0 {
 		return ip.GetSubnetInterface(dstSubnet)
 	}
-	if iface, err = net.InterfaceByName(interfaceFlag); err != nil {
+	if iface, err = net.InterfaceByName(cliInterfaceFlag); err != nil {
 		return
 	}
 	if srcSubnet, err = ip.GetSubnetInterfaceIP(iface, dstSubnet); err != nil {
@@ -167,7 +167,7 @@ func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *
 
 func getLogger(name string, w io.Writer) (logger log.Logger, err error) {
 	opts := []log.LoggerOption{log.FlushInterval(1 * time.Second)}
-	if jsonFlag {
+	if cliJSONFlag {
 		opts = append(opts, log.JSON())
 	}
 	logger, err = log.NewLogger(w, name, opts...)

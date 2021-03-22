@@ -13,10 +13,11 @@ import (
 )
 
 const (
-	SYNScanType  = "tcpsyn"
-	FINScanType  = "tcpfin"
-	NULLScanType = "tcpnull"
-	XmasScanType = "tcpxmas"
+	SYNScanType   = "tcpsyn"
+	FINScanType   = "tcpfin"
+	NULLScanType  = "tcpnull"
+	XmasScanType  = "tcpxmas"
+	FlagsScanType = "tcpflags"
 )
 
 //easyjson:json

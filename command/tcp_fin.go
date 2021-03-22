@@ -26,16 +26,18 @@ var tcpfinCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		var conf *scanConfig
-		if conf, err = parseScanConfig(tcp.SYNScanType, args[0], portsFlag); err != nil {
-			return
-		}
-
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 
+		scanName := tcp.FINScanType
+
+		var conf *scanConfig
+		if conf, err = parseScanConfig(scanName, args[0], cliPortsFlag); err != nil {
+			return
+		}
+
 		m := newTCPScanMethod(ctx, conf,
-			withTCPScanName(tcp.FINScanType),
+			withTCPScanName(scanName),
 			withTCPPacketFiller(tcp.NewPacketFiller(tcp.WithFIN())),
 			withTCPPacketFilterFunc(tcp.TrueFilter),
 			withTCPPacketFlags(tcp.AllFlags),

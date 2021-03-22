@@ -9,26 +9,46 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/google/gopacket/layers"
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 	"github.com/v-byte-cpu/sx/pkg/scan/tcp"
 )
 
+var cliTCPPacketFlags string
+
+const (
+	cliTCPSYNPacketFlag = "syn"
+	cliTCPACKPacketFlag = "ack"
+	cliTCPFINPacketFlag = "fin"
+	cliTCPRSTPacketFlag = "rst"
+	cliTCPPSHPacketFlag = "psh"
+	cliTCPURGPacketFlag = "urg"
+	cliTCPECEPacketFlag = "ece"
+	cliTCPCWRPacketFlag = "cwr"
+	cliTCPNSPacketFlag  = "ns"
+)
+
+var (
+	errTCPflag = errors.New("invalid TCP packet flag")
+)
+
 func init() {
-	tcpCmd.PersistentFlags().StringVarP(&portsFlag, "ports", "p", "", "set ports to scan")
+	tcpCmd.PersistentFlags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
 	if err := tcpCmd.MarkPersistentFlagRequired("ports"); err != nil {
 		golog.Fatalln(err)
 	}
+	tcpCmd.Flags().StringVar(&cliTCPPacketFlags, "flags", "", "set TCP flags")
 	rootCmd.AddCommand(tcpCmd)
 }
 
 var tcpCmd = &cobra.Command{
-	Use:     "tcp [flags] subnet",
-	Example: strings.Join([]string{"tcp -p 22 192.168.0.1/24", "tcp -p 22-4567 10.0.0.1"}, "\n"),
-	Short:   "Perform TCP scan",
-	Long:    "Perform TCP scan. TCP SYN scan is used by default unless --flags option is specified",
+	Use: "tcp [flags] subnet",
+	Example: strings.Join([]string{
+		"tcp -p 22 192.168.0.1/24", "tcp -p 22-4567 10.0.0.1",
+		"tcp --flags fin,ack -p 22 192.168.0.3"}, "\n"),
+	Short: "Perform TCP scan",
+	Long:  "Perform TCP scan. TCP SYN scan is used by default unless --flags option is specified",
 	Args: func(cmd *cobra.Command, args []string) error {
 		if len(args) != 1 {
 			return errors.New("requires one ip subnet argument")
@@ -36,22 +56,34 @@ var tcpCmd = &cobra.Command{
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		var conf *scanConfig
-		if conf, err = parseScanConfig(tcp.SYNScanType, args[0], portsFlag); err != nil {
-			return
-		}
-
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 
+		if len(cliTCPPacketFlags) == 0 {
+			return startTCPSYNScan(ctx, args[0], cliPortsFlag)
+		}
+
+		var tcpFlags []string
+		if tcpFlags, err = parseTCPFlags(cliTCPPacketFlags); err != nil {
+			return err
+		}
+
+		var opts []tcp.PacketFillerOption
+		for _, flag := range tcpFlags {
+			opts = append(opts, tcpPacketFlagOptions[flag])
+		}
+
+		scanName := tcp.FlagsScanType
+		var conf *scanConfig
+		if conf, err = parseScanConfig(scanName, args[0], cliPortsFlag); err != nil {
+			return
+		}
+
 		m := newTCPScanMethod(ctx, conf,
-			withTCPScanName(tcp.SYNScanType),
-			withTCPPacketFiller(tcp.NewPacketFiller(tcp.WithSYN())),
-			withTCPPacketFilterFunc(func(pkt *layers.TCP) bool {
-				// port is open
-				return pkt.SYN && pkt.ACK
-			}),
-			withTCPPacketFlags(tcp.EmptyFlags),
+			withTCPScanName(scanName),
+			withTCPPacketFiller(tcp.NewPacketFiller(opts...)),
+			withTCPPacketFilterFunc(tcp.TrueFilter),
+			withTCPPacketFlags(tcp.AllFlags),
 		)
 
 		return startEngine(ctx, &engineConfig{
@@ -61,6 +93,31 @@ var tcpCmd = &cobra.Command{
 			bpfFilter:  tcp.BPFFilter,
 		})
 	},
+}
+
+var tcpPacketFlagOptions = map[string]tcp.PacketFillerOption{
+	cliTCPSYNPacketFlag: tcp.WithSYN(),
+	cliTCPACKPacketFlag: tcp.WithACK(),
+	cliTCPFINPacketFlag: tcp.WithFIN(),
+	cliTCPRSTPacketFlag: tcp.WithRST(),
+	cliTCPPSHPacketFlag: tcp.WithPSH(),
+	cliTCPURGPacketFlag: tcp.WithURG(),
+	cliTCPECEPacketFlag: tcp.WithECE(),
+	cliTCPCWRPacketFlag: tcp.WithCWR(),
+	cliTCPNSPacketFlag:  tcp.WithNS(),
+}
+
+func parseTCPFlags(tcpFlags string) ([]string, error) {
+	if len(tcpFlags) == 0 {
+		return []string{}, nil
+	}
+	flags := strings.Split(tcpFlags, ",")
+	for _, flag := range flags {
+		if _, ok := tcpPacketFlagOptions[flag]; !ok {
+			return nil, errTCPflag
+		}
+	}
+	return flags, nil
 }
 
 type tcpScanConfig struct {
