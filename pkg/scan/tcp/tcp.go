@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	SYNScanType = "syn"
-	FINScanType = "fin"
+	SYNScanType  = "tcpsyn"
+	FINScanType  = "tcpfin"
+	NULLScanType = "tcpnull"
 )
 
 //easyjson:json

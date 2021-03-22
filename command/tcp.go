@@ -109,5 +109,5 @@ func newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConf
 	return tcp.NewScanMethod(
 		c.scanName, psrc, results,
 		tcp.WithPacketFilterFunc(c.packetFilter),
-		tcp.WithPacketFlagsFunc(tcp.EmptyFlags))
+		tcp.WithPacketFlagsFunc(c.packetFlags))
 }
