@@ -10,6 +10,7 @@ Features:
   * TCP SYN scan
   * TCP FIN / NULL / Xmas scans
   * Custom TCP scans with any TCP flags
+  * UDP scan
 
 ## Building
 
