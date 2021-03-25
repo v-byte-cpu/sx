@@ -106,8 +106,12 @@ func TestEngineStartCollectsAllErrors(t *testing.T) {
 			IP:   net.IPv4(192, 168, 0, 1),
 			Mask: net.CIDRMask(32, 32),
 		},
-		StartPort: 888,
-		EndPort:   888,
+		Ports: []*PortRange{
+			{
+				StartPort: 888,
+				EndPort:   888,
+			},
+		},
 	})
 
 	result := chanToSlice(t, chanErrToGeneric(out), 2)
@@ -129,10 +133,14 @@ func TestPacketSourceReturnsError(t *testing.T) {
 		pktgen := NewMockPacketGenerator(ctrl)
 
 		expectedScanRange := &Range{
-			SrcIP:     net.IPv4(192, 168, 0, 1),
-			SrcMAC:    net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-			StartPort: 22,
-			EndPort:   22,
+			SrcIP:  net.IPv4(192, 168, 0, 1),
+			SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+			Ports: []*PortRange{
+				{
+					StartPort: 22,
+					EndPort:   22,
+				},
+			},
 		}
 		var scanRange Range
 		err := copier.Copy(&scanRange, expectedScanRange)
@@ -166,10 +174,14 @@ func TestPacketSourceReturnsData(t *testing.T) {
 		pktgen := NewMockPacketGenerator(ctrl)
 
 		scanRange := &Range{
-			SrcIP:     net.IPv4(192, 168, 0, 1),
-			SrcMAC:    net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-			StartPort: 22,
-			EndPort:   22,
+			SrcIP:  net.IPv4(192, 168, 0, 1),
+			SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+			Ports: []*PortRange{
+				{
+					StartPort: 22,
+					EndPort:   22,
+				},
+			},
 		}
 		requests := make(chan *Request)
 		close(requests)

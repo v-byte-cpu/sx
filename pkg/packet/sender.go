@@ -21,12 +21,12 @@ type Writer interface {
 	WritePacketData(pkt []byte) error
 }
 
-type sender struct {
-	w Writer
-}
-
 func NewSender(w Writer) Sender {
 	return &sender{w}
+}
+
+type sender struct {
+	w Writer
 }
 
 func (s *sender) SendPackets(ctx context.Context, in <-chan *BufferData) (<-chan interface{}, <-chan error) {

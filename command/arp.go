@@ -61,9 +61,9 @@ var arpCmd = &cobra.Command{
 }
 
 func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
-	var reqgen scan.RequestGenerator = scan.RequestGeneratorFunc(scan.Requests)
+	var reqgen scan.RequestGenerator = scan.NewIPRequestGenerator(scan.NewIPGenerator())
 	if arpLiveModeFlag {
-		reqgen = scan.NewLiveRequestGenerator(1 * time.Second)
+		reqgen = scan.NewLiveRequestGenerator(reqgen, 1*time.Second)
 	}
 	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
