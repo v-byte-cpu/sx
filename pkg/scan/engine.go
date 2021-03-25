@@ -10,6 +10,11 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/packet"
 )
 
+type PortRange struct {
+	StartPort uint16
+	EndPort   uint16
+}
+
 type Range struct {
 	Interface *net.Interface
 	DstSubnet *net.IPNet
@@ -18,19 +23,20 @@ type Range struct {
 	SrcMAC    net.HardwareAddr
 	StartPort uint16
 	EndPort   uint16
+	Ports     []*PortRange
 }
 
 type PacketSource interface {
 	Packets(ctx context.Context, r *Range) <-chan *packet.BufferData
 }
 
+func NewPacketSource(reqgen RequestGenerator, pktgen PacketGenerator) PacketSource {
+	return &packetSource{reqgen, pktgen}
+}
+
 type packetSource struct {
 	reqgen RequestGenerator
 	pktgen PacketGenerator
-}
-
-func NewPacketSource(reqgen RequestGenerator, pktgen PacketGenerator) PacketSource {
-	return &packetSource{reqgen, pktgen}
 }
 
 func (s *packetSource) Packets(ctx context.Context, r *Range) <-chan *packet.BufferData {

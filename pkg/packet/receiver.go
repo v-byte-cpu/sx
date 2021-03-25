@@ -25,13 +25,13 @@ type Receiver interface {
 	ReceivePackets(ctx context.Context) <-chan error
 }
 
+func NewReceiver(sr Reader, p Processor) Receiver {
+	return &receiver{sr, p}
+}
+
 type receiver struct {
 	sr Reader
 	p  Processor
-}
-
-func NewReceiver(sr Reader, p Processor) Receiver {
-	return &receiver{sr, p}
 }
 
 func isTemporaryError(err error) bool {

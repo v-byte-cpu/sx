@@ -65,7 +65,7 @@ func parseScanConfig(scanName, subnet, ports string) (c *scanConfig, err error) 
 	if r, err = parseScanRange(subnet); err != nil {
 		return
 	}
-	if r.StartPort, r.EndPort, err = parsePortRange(ports); err != nil {
+	if r.Ports, err = parsePortRanges(ports); err != nil {
 		return
 	}
 
@@ -133,22 +133,31 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 		SrcMAC:    srcMAC}, nil
 }
 
-// TODO port ranges with tests
-func parsePortRange(portsRange string) (startPort, endPort uint16, err error) {
+func parsePortRange(portsRange string) (r *scan.PortRange, err error) {
 	ports := strings.Split(portsRange, "-")
 	var port uint64
 	if port, err = strconv.ParseUint(ports[0], 10, 16); err != nil {
 		return
 	}
-	startPort = uint16(port)
+	result := &scan.PortRange{StartPort: uint16(port), EndPort: uint16(port)}
 	if len(ports) < 2 {
-		endPort = startPort
-		return
+		return result, nil
 	}
 	if port, err = strconv.ParseUint(ports[1], 10, 16); err != nil {
 		return
 	}
-	endPort = uint16(port)
+	result.EndPort = uint16(port)
+	return result, nil
+}
+
+func parsePortRanges(portsRanges string) (result []*scan.PortRange, err error) {
+	var ports *scan.PortRange
+	for _, portsRange := range strings.Split(portsRanges, ",") {
+		if ports, err = parsePortRange(portsRange); err != nil {
+			return
+		}
+		result = append(result, ports)
+	}
 	return
 }
 

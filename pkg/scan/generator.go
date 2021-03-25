@@ -18,12 +18,12 @@ type PacketGenerator interface {
 	Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData
 }
 
-type packetGenerator struct {
-	filler PacketFiller
-}
-
 func NewPacketGenerator(filler PacketFiller) PacketGenerator {
 	return &packetGenerator{filler}
+}
+
+type packetGenerator struct {
+	filler PacketFiller
 }
 
 func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
@@ -63,14 +63,14 @@ func writeBufToChan(ctx context.Context, out chan *packet.BufferData, buf *packe
 	}
 }
 
-type packetMultiGenerator struct {
-	gen        *packetGenerator
-	numWorkers int
-}
-
 func NewPacketMultiGenerator(filler PacketFiller, numWorkers int) PacketGenerator {
 	gen := &packetGenerator{filler}
 	return &packetMultiGenerator{gen, numWorkers}
+}
+
+type packetMultiGenerator struct {
+	gen        *packetGenerator
+	numWorkers int
 }
 
 func (g *packetMultiGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
