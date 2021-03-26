@@ -8,7 +8,7 @@ clone:
 
 steps:
   - name: lint
-    image: golangci/golangci-lint:v1.38
+    image: golangci/golangci-lint:v1.39
     commands:
       - apt-get update
       - apt-get install -y libpcap-dev
