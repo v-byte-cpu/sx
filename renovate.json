@@ -4,5 +4,8 @@
     ],
     "postUpdateOptions": [
         "gomodTidy"
+    ],
+    "ignoreDeps": [
+        "golang.org/x/net"
     ]
 }
