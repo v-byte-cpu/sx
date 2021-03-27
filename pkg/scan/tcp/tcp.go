@@ -29,7 +29,7 @@ type ScanResult struct {
 }
 
 func (r *ScanResult) String() string {
-	return fmt.Sprintf("%-20s %d", r.IP, r.Port)
+	return fmt.Sprintf("%-20s %-5d %s", r.IP, r.Port, r.Flags)
 }
 
 func (r *ScanResult) ID() string {
