@@ -51,14 +51,11 @@ var arpCmd = &cobra.Command{
 
 		m := newARPScanMethod(ctx)
 
-		return startEngine(ctx, &engineConfig{
-			logger:     logger,
-			scanRange:  r,
-			scanMethod: m,
-			bpfFilter:  arp.BPFFilter,
-			rateCount:  cliRateCount,
-			rateWindow: cliRateWindow,
-		})
+		return startEngine(ctx, newEngineConfig(
+			withLogger(logger),
+			withScanRange(r),
+			withScanMethod(m),
+			withBPFFilter(arp.BPFFilter)))
 	},
 }
 

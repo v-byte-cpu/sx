@@ -53,6 +53,11 @@ var rootCmd = &cobra.Command{
 				return
 			}
 		}
+		if len(cliExitDelayFlag) > 0 {
+			if cliExitDelay, err = time.ParseDuration(cliExitDelayFlag); err != nil {
+				return
+			}
+		}
 		return
 	},
 }
@@ -64,6 +69,7 @@ var (
 	cliSrcMACFlag    string
 	cliPortsFlag     string
 	cliRateLimitFlag string
+	cliExitDelayFlag string
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -71,6 +77,7 @@ var (
 	cliPortRanges []*scan.PortRange
 	cliRateCount  int
 	cliRateWindow time.Duration
+	cliExitDelay  = 300 * time.Millisecond
 )
 
 var (
@@ -85,7 +92,16 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cliInterfaceFlag, "iface", "i", "", "set interface to send/receive packets")
 	rootCmd.PersistentFlags().StringVar(&cliSrcIPFlag, "srcip", "", "set source IP address for generated packets")
 	rootCmd.PersistentFlags().StringVar(&cliSrcMACFlag, "srcmac", "", "set source MAC address for generated packets")
-	rootCmd.PersistentFlags().StringVarP(&cliRateLimitFlag, "rate", "r", "", "set rate limit for generated packets")
+	rootCmd.PersistentFlags().StringVarP(&cliRateLimitFlag, "rate", "r", "",
+		strings.Join([]string{
+			"set rate limit for generated packets",
+			`format: "rateCount/rateWindow"`,
+			"where rateCount is a number of packets, rateWindow is the time interval",
+			"e.g. 1000/s -- 1000 packets per second", "500/7s -- 500 packets per 7 seconds\n"}, "\n"))
+	rootCmd.PersistentFlags().StringVar(&cliExitDelayFlag, "exit-delay", "",
+		strings.Join([]string{
+			"set exit delay to wait for response packets",
+			"any expression accepted by time.ParseDuration is valid (300ms by default)"}, "\n"))
 }
 
 func Main() {
@@ -258,13 +274,54 @@ func getGatewayIP(r *scan.Range) (gatewayIP net.IP, err error) {
 	return
 }
 
+type bpfFilterFunc func(r *scan.Range) (filter string, maxPacketLength int)
+
 type engineConfig struct {
 	logger     log.Logger
 	scanRange  *scan.Range
 	scanMethod resultScanMethod
-	bpfFilter  func(r *scan.Range) (filter string, maxPacketLength int)
+	bpfFilter  bpfFilterFunc
 	rateCount  int
 	rateWindow time.Duration
+	exitDelay  time.Duration
+}
+
+type engineConfigOption func(c *engineConfig)
+
+func withLogger(logger log.Logger) engineConfigOption {
+	return func(c *engineConfig) {
+		c.logger = logger
+	}
+}
+
+func withScanRange(r *scan.Range) engineConfigOption {
+	return func(c *engineConfig) {
+		c.scanRange = r
+	}
+}
+
+func withScanMethod(sm resultScanMethod) engineConfigOption {
+	return func(c *engineConfig) {
+		c.scanMethod = sm
+	}
+}
+
+func withBPFFilter(bpfFilter bpfFilterFunc) engineConfigOption {
+	return func(c *engineConfig) {
+		c.bpfFilter = bpfFilter
+	}
+}
+
+func newEngineConfig(opts ...engineConfigOption) *engineConfig {
+	c := &engineConfig{
+		rateCount:  cliRateCount,
+		rateWindow: cliRateWindow,
+		exitDelay:  cliExitDelay,
+	}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
 }
 
 type resultScanMethod interface {
@@ -311,7 +368,7 @@ func startEngine(ctx context.Context, conf *engineConfig) error {
 	go func() {
 		defer cancel()
 		<-done
-		<-time.After(300 * time.Millisecond)
+		<-time.After(conf.exitDelay)
 	}()
 
 	// error logging

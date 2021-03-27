@@ -43,13 +43,10 @@ var tcpxmasCmd = &cobra.Command{
 			withTCPPacketFlags(tcp.AllFlags),
 		)
 
-		return startEngine(ctx, &engineConfig{
-			logger:     conf.logger,
-			scanRange:  conf.scanRange,
-			scanMethod: m,
-			bpfFilter:  tcp.BPFFilter,
-			rateCount:  cliRateCount,
-			rateWindow: cliRateWindow,
-		})
+		return startEngine(ctx, newEngineConfig(
+			withLogger(conf.logger),
+			withScanRange(conf.scanRange),
+			withScanMethod(m),
+			withBPFFilter(tcp.BPFFilter)))
 	},
 }
