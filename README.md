@@ -259,7 +259,7 @@ cat arp.cache | ./sx udp --json -p 53 192.168.0.171
 sample output:
 
 ```
-{"scan":"udp","ip":"192.168.0.171","icmp":{"Type":3,"Code":3}}
+{"scan":"udp","ip":"192.168.0.171","icmp":{"type":3,"code":3}}
 ```
 
 In this case we find out that host sent ICMP reply packet with **Destination Unreachable** type and **Port Unreachable** code (typical response for a closed port according to the rfc1122).

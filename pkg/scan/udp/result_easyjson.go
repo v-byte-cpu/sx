@@ -129,9 +129,9 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanIcmp(in *jlexer.Lexer, out 
 			continue
 		}
 		switch key {
-		case "Type":
+		case "type":
 			out.Type = uint8(in.Uint8())
-		case "Code":
+		case "code":
 			out.Code = uint8(in.Uint8())
 		default:
 			in.SkipRecursive()
@@ -148,12 +148,12 @@ func easyjsonD3b49167EncodeGithubComVByteCpuSxPkgScanIcmp(out *jwriter.Writer, i
 	first := true
 	_ = first
 	{
-		const prefix string = ",\"Type\":"
+		const prefix string = ",\"type\":"
 		out.RawString(prefix[1:])
 		out.Uint8(uint8(in.Type))
 	}
 	{
-		const prefix string = ",\"Code\":"
+		const prefix string = ",\"code\":"
 		out.RawString(prefix)
 		out.Uint8(uint8(in.Code))
 	}
