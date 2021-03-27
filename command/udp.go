@@ -35,7 +35,7 @@ var udpCmd = &cobra.Command{
 		defer cancel()
 
 		var conf *scanConfig
-		if conf, err = parseScanConfig(udp.ScanType, args[0], cliPortsFlag); err != nil {
+		if conf, err = parseScanConfig(udp.ScanType, args[0]); err != nil {
 			return
 		}
 
@@ -46,6 +46,8 @@ var udpCmd = &cobra.Command{
 			scanRange:  conf.scanRange,
 			scanMethod: m,
 			bpfFilter:  icmp.BPFFilter,
+			rateCount:  cliRateCount,
+			rateWindow: cliRateWindow,
 		})
 	},
 }

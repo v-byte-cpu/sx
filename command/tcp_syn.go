@@ -29,15 +29,15 @@ var tcpsynCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
-		return startTCPSYNScan(ctx, args[0], cliPortsFlag)
+		return startTCPSYNScan(ctx, args[0])
 	},
 }
 
-func startTCPSYNScan(ctx context.Context, subnet, ports string) (err error) {
+func startTCPSYNScan(ctx context.Context, subnet string) (err error) {
 	scanName := tcp.SYNScanType
 
 	var conf *scanConfig
-	if conf, err = parseScanConfig(scanName, subnet, ports); err != nil {
+	if conf, err = parseScanConfig(scanName, subnet); err != nil {
 		return
 	}
 
@@ -56,6 +56,8 @@ func startTCPSYNScan(ctx context.Context, subnet, ports string) (err error) {
 		scanRange:  conf.scanRange,
 		scanMethod: m,
 		// TODO SYN,ACK filter
-		bpfFilter: tcp.BPFFilter,
+		bpfFilter:  tcp.BPFFilter,
+		rateCount:  cliRateCount,
+		rateWindow: cliRateWindow,
 	})
 }

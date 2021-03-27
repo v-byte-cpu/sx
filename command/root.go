@@ -15,15 +15,46 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
 	"github.com/v-byte-cpu/sx/pkg/ip"
+	"github.com/v-byte-cpu/sx/pkg/packet"
 	"github.com/v-byte-cpu/sx/pkg/packet/afpacket"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"go.uber.org/ratelimit"
 )
 
 var rootCmd = &cobra.Command{
 	Use:     "sx",
 	Short:   "Fast, modern, easy-to-use network scanner",
 	Version: "0.1.0",
+	// Parse common flags
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(cliInterfaceFlag) > 0 {
+			if cliInterface, err = net.InterfaceByName(cliInterfaceFlag); err != nil {
+				return
+			}
+		}
+		if len(cliSrcIPFlag) > 0 {
+			if cliSrcIP = net.ParseIP(cliSrcIPFlag); cliSrcIP == nil {
+				return errSrcIP
+			}
+		}
+		if len(cliSrcMACFlag) > 0 {
+			if cliSrcMAC, err = net.ParseMAC(cliSrcMACFlag); err != nil {
+				return
+			}
+		}
+		if len(cliPortsFlag) > 0 {
+			if cliPortRanges, err = parsePortRanges(cliPortsFlag); err != nil {
+				return
+			}
+		}
+		if len(cliRateLimitFlag) > 0 {
+			if cliRateCount, cliRateWindow, err = parseRateLimit(cliRateLimitFlag); err != nil {
+				return
+			}
+		}
+		return
+	},
 }
 
 var (
@@ -32,12 +63,21 @@ var (
 	cliSrcIPFlag     string
 	cliSrcMACFlag    string
 	cliPortsFlag     string
+	cliRateLimitFlag string
+
+	cliInterface  *net.Interface
+	cliSrcIP      net.IP
+	cliSrcMAC     net.HardwareAddr
+	cliPortRanges []*scan.PortRange
+	cliRateCount  int
+	cliRateWindow time.Duration
 )
 
 var (
 	errSrcIP        = errors.New("invalid source IP")
 	errSrcMAC       = errors.New("invalid source MAC")
 	errSrcInterface = errors.New("invalid source interface")
+	errRateLimit    = errors.New("invalid ratelimit")
 )
 
 func init() {
@@ -45,6 +85,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVarP(&cliInterfaceFlag, "iface", "i", "", "set interface to send/receive packets")
 	rootCmd.PersistentFlags().StringVar(&cliSrcIPFlag, "srcip", "", "set source IP address for generated packets")
 	rootCmd.PersistentFlags().StringVar(&cliSrcMACFlag, "srcmac", "", "set source MAC address for generated packets")
+	rootCmd.PersistentFlags().StringVarP(&cliRateLimitFlag, "rate", "r", "", "set rate limit for generated packets")
 }
 
 func Main() {
@@ -60,12 +101,9 @@ type scanConfig struct {
 	gatewayIP net.IP
 }
 
-func parseScanConfig(scanName, subnet, ports string) (c *scanConfig, err error) {
+func parseScanConfig(scanName, subnet string) (c *scanConfig, err error) {
 	var r *scan.Range
 	if r, err = parseScanRange(subnet); err != nil {
-		return
-	}
-	if r.Ports, err = parsePortRanges(ports); err != nil {
 		return
 	}
 
@@ -108,18 +146,16 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 	}
 
 	srcIP := srcSubnet.IP
-	if len(cliSrcIPFlag) > 0 {
-		srcIP = net.ParseIP(cliSrcIPFlag)
+	if cliSrcIP != nil {
+		srcIP = cliSrcIP
 	}
 	if srcIP == nil {
 		return nil, errSrcIP
 	}
 
 	srcMAC := iface.HardwareAddr
-	if len(cliSrcMACFlag) > 0 {
-		if srcMAC, err = net.ParseMAC(cliSrcMACFlag); err != nil {
-			return nil, err
-		}
+	if cliSrcMAC != nil {
+		srcMAC = cliSrcMAC
 	}
 	if srcMAC == nil {
 		return nil, errSrcMAC
@@ -128,6 +164,7 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 	return &scan.Range{
 		Interface: iface,
 		DstSubnet: dstSubnet,
+		Ports:     cliPortRanges,
 		SrcSubnet: srcSubnet,
 		SrcIP:     srcIP.To4(),
 		SrcMAC:    srcMAC}, nil
@@ -161,14 +198,35 @@ func parsePortRanges(portsRanges string) (result []*scan.PortRange, err error) {
 	return
 }
 
-func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *net.IPNet, err error) {
-	if len(cliInterfaceFlag) == 0 {
-		return ip.GetSubnetInterface(dstSubnet)
+func parseRateLimit(rateLimit string) (rateCount int, rateWindow time.Duration, err error) {
+	parts := strings.Split(rateLimit, "/")
+	if len(parts) > 2 {
+		return 0, 0, errRateLimit
 	}
-	if iface, err = net.InterfaceByName(cliInterfaceFlag); err != nil {
+	var rate int64
+	if rate, err = strconv.ParseInt(parts[0], 10, 32); err != nil || rate < 0 {
+		return 0, 0, errRateLimit
+	}
+	rateCount = int(rate)
+	rateWindow = 1 * time.Second
+	if len(parts) < 2 {
 		return
 	}
-	if srcSubnet, err = ip.GetSubnetInterfaceIP(iface, dstSubnet); err != nil {
+	win := parts[1]
+	if len(win) > 0 && (win[0] < '0' || win[0] > '9') {
+		win = "1" + win
+	}
+	if rateWindow, err = time.ParseDuration(win); err != nil || rateWindow < 0 {
+		return 0, 0, errRateLimit
+	}
+	return
+}
+
+func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *net.IPNet, err error) {
+	if cliInterface == nil {
+		return ip.GetSubnetInterface(dstSubnet)
+	}
+	if srcSubnet, err = ip.GetSubnetInterfaceIP(cliInterface, dstSubnet); err != nil {
 		return
 	}
 	return iface, srcSubnet, nil
@@ -205,6 +263,8 @@ type engineConfig struct {
 	scanRange  *scan.Range
 	scanMethod resultScanMethod
 	bpfFilter  func(r *scan.Range) (filter string, maxPacketLength int)
+	rateCount  int
+	rateWindow time.Duration
 }
 
 type resultScanMethod interface {
@@ -221,14 +281,20 @@ func startEngine(ctx context.Context, conf *engineConfig) error {
 	logger := conf.logger
 
 	// setup network interface to read/write packets
-	rw, err := afpacket.NewPacketSource(r.Interface.Name)
+	afps, err := afpacket.NewPacketSource(r.Interface.Name)
 	if err != nil {
 		return err
 	}
-	defer rw.Close()
-	err = rw.SetBPFFilter(conf.bpfFilter(r))
+	defer afps.Close()
+	err = afps.SetBPFFilter(conf.bpfFilter(r))
 	if err != nil {
 		return err
+	}
+	var rw packet.ReadWriter = afps
+	// setup rate limit for sending packets
+	if conf.rateCount > 0 {
+		rw = packet.NewRateLimitReadWriter(afps,
+			ratelimit.New(conf.rateCount, ratelimit.Per(conf.rateWindow)))
 	}
 
 	// setup result logging

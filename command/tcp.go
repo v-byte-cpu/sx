@@ -60,7 +60,7 @@ var tcpCmd = &cobra.Command{
 		defer cancel()
 
 		if len(cliTCPPacketFlags) == 0 {
-			return startTCPSYNScan(ctx, args[0], cliPortsFlag)
+			return startTCPSYNScan(ctx, args[0])
 		}
 
 		var tcpFlags []string
@@ -75,7 +75,7 @@ var tcpCmd = &cobra.Command{
 
 		scanName := tcp.FlagsScanType
 		var conf *scanConfig
-		if conf, err = parseScanConfig(scanName, args[0], cliPortsFlag); err != nil {
+		if conf, err = parseScanConfig(scanName, args[0]); err != nil {
 			return
 		}
 
@@ -91,6 +91,8 @@ var tcpCmd = &cobra.Command{
 			scanRange:  conf.scanRange,
 			scanMethod: m,
 			bpfFilter:  tcp.BPFFilter,
+			rateCount:  cliRateCount,
+			rateWindow: cliRateWindow,
 		})
 	},
 }

@@ -32,7 +32,7 @@ var tcpnullCmd = &cobra.Command{
 		scanName := tcp.NULLScanType
 
 		var conf *scanConfig
-		if conf, err = parseScanConfig(scanName, args[0], cliPortsFlag); err != nil {
+		if conf, err = parseScanConfig(scanName, args[0]); err != nil {
 			return
 		}
 
@@ -48,6 +48,8 @@ var tcpnullCmd = &cobra.Command{
 			scanRange:  conf.scanRange,
 			scanMethod: m,
 			bpfFilter:  tcp.BPFFilter,
+			rateCount:  cliRateCount,
+			rateWindow: cliRateWindow,
 		})
 	},
 }
