@@ -56,6 +56,8 @@ var arpCmd = &cobra.Command{
 			scanRange:  r,
 			scanMethod: m,
 			bpfFilter:  arp.BPFFilter,
+			rateCount:  cliRateCount,
+			rateWindow: cliRateWindow,
 		})
 	},
 }
@@ -63,6 +65,7 @@ var arpCmd = &cobra.Command{
 func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
 	var reqgen scan.RequestGenerator = scan.NewIPRequestGenerator(scan.NewIPGenerator())
 	if arpLiveModeFlag {
+		// TODO rescanTimeout option
 		reqgen = scan.NewLiveRequestGenerator(reqgen, 1*time.Second)
 	}
 	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
