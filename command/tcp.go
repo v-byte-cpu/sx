@@ -38,6 +38,8 @@ func init() {
 	if err := tcpCmd.MarkPersistentFlagRequired("ports"); err != nil {
 		golog.Fatalln(err)
 	}
+	tcpCmd.PersistentFlags().StringVarP(&cliARPCacheFileFlag, "arp-cache", "a", "",
+		strings.Join([]string{"set ARP cache file", "reads from stdin by default"}, "\n"))
 	tcpCmd.Flags().StringVar(&cliTCPPacketFlags, "flags", "", "set TCP flags")
 	rootCmd.AddCommand(tcpCmd)
 }
