@@ -17,6 +17,8 @@ import (
 
 func init() {
 	udpCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
+	udpCmd.Flags().StringVarP(&cliARPCacheFileFlag, "arp-cache", "a", "",
+		strings.Join([]string{"set ARP cache file", "reads from stdin by default"}, "\n"))
 	rootCmd.AddCommand(udpCmd)
 }
 

@@ -128,6 +128,18 @@ or individual ports:
 cat arp.cache | ./sx tcp -p 22,443 192.168.0.171
 ```
 
+It is possible to specify the ARP cache file using the `-a` or `--arp-cache` options:
+
+```
+./sx tcp -a arp.cache -p 22,443 192.168.0.171
+```
+
+or stdin redirect:
+
+```
+./sx tcp -p 22,443 192.168.0.171 < arp.cache
+```
+
 You can also use the `tcp syn` subcommand instead of the `tcp`:
 
 ```

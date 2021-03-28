@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -63,13 +64,14 @@ var rootCmd = &cobra.Command{
 }
 
 var (
-	cliJSONFlag      bool
-	cliInterfaceFlag string
-	cliSrcIPFlag     string
-	cliSrcMACFlag    string
-	cliPortsFlag     string
-	cliRateLimitFlag string
-	cliExitDelayFlag string
+	cliJSONFlag         bool
+	cliInterfaceFlag    string
+	cliSrcIPFlag        string
+	cliSrcMACFlag       string
+	cliPortsFlag        string
+	cliRateLimitFlag    string
+	cliExitDelayFlag    string
+	cliARPCacheFileFlag string
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -85,6 +87,7 @@ var (
 	errSrcMAC       = errors.New("invalid source MAC")
 	errSrcInterface = errors.New("invalid source interface")
 	errRateLimit    = errors.New("invalid ratelimit")
+	errStdin        = errors.New("stdin is from a terminal")
 )
 
 func init() {
@@ -128,10 +131,8 @@ func parseScanConfig(scanName, subnet string) (c *scanConfig, err error) {
 		return
 	}
 
-	// TODO file argument
-	// TODO handle pipes
-	cache := arp.NewCache()
-	if err = arp.FillCache(cache, os.Stdin); err != nil {
+	var cache *arp.Cache
+	if cache, err = parseARPCache(); err != nil {
 		return
 	}
 
@@ -145,6 +146,32 @@ func parseScanConfig(scanName, subnet string) (c *scanConfig, err error) {
 		cache:     cache,
 		gatewayIP: gatewayIP,
 	}
+	return
+}
+
+func parseARPCache() (cache *arp.Cache, err error) {
+	var r io.Reader
+	if len(cliARPCacheFileFlag) > 0 {
+		var f *os.File
+		if f, err = os.Open(cliARPCacheFileFlag); err != nil {
+			return
+		}
+		defer f.Close()
+		r = bufio.NewReader(f)
+	} else {
+		var info os.FileInfo
+		if info, err = os.Stdin.Stat(); err != nil {
+			return
+		}
+		// only data being piped to stdin is valid
+		if (info.Mode() & os.ModeCharDevice) != 0 {
+			// stdin from terminal is not valid
+			return nil, errStdin
+		}
+		r = os.Stdin
+	}
+	cache = arp.NewCache()
+	err = arp.FillCache(cache, r)
 	return
 }
 
