@@ -15,10 +15,13 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
-var arpLiveModeFlag bool
+var (
+	cliARPLiveTimeoutFlag string
+	cliARPLiveTimeout     time.Duration
+)
 
 func init() {
-	arpCmd.Flags().BoolVar(&arpLiveModeFlag, "live", false, "enable live mode")
+	arpCmd.Flags().StringVar(&cliARPLiveTimeoutFlag, "live", "", "enable live mode")
 	rootCmd.AddCommand(arpCmd)
 }
 
@@ -31,6 +34,12 @@ var arpCmd = &cobra.Command{
 			return errors.New("requires one ip subnet argument")
 		}
 		return nil
+	},
+	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(cliARPLiveTimeoutFlag) > 0 {
+			cliARPLiveTimeout, err = time.ParseDuration(cliARPLiveTimeoutFlag)
+		}
+		return
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		var r *scan.Range
@@ -45,7 +54,7 @@ var arpCmd = &cobra.Command{
 		if logger, err = getLogger("arp", os.Stdout); err != nil {
 			return err
 		}
-		if arpLiveModeFlag {
+		if cliARPLiveTimeout > 0 {
 			logger = log.NewUniqueLogger(logger)
 		}
 
@@ -61,9 +70,8 @@ var arpCmd = &cobra.Command{
 
 func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
 	var reqgen scan.RequestGenerator = scan.NewIPRequestGenerator(scan.NewIPGenerator())
-	if arpLiveModeFlag {
-		// TODO rescanTimeout option
-		reqgen = scan.NewLiveRequestGenerator(reqgen, 1*time.Second)
+	if cliARPLiveTimeout > 0 {
+		reqgen = scan.NewLiveRequestGenerator(reqgen, cliARPLiveTimeout)
 	}
 	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)

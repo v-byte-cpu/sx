@@ -69,10 +69,10 @@ wait 5 seconds before exiting to receive delayed reply packets, by default `sx` 
 ./sx arp --exit-delay 5s 192.168.0.1/24
 ```
 
-Live scan mode that rescans network every second:
+Live scan mode that rescans network every 10 seconds:
 
 ```
-./sx arp 192.168.0.1/24 --live
+./sx arp 192.168.0.1/24 --live 10s
 ```
 
 ### TCP scan
@@ -286,13 +286,13 @@ As an example of scan composition, you can combine ARP and TCP SYN scans to crea
 Start live ARP scan and save results to `arp.cache` file:
 
 ```
-./sx arp 192.168.0.1/24 --live --json | tee arp.cache
+./sx arp 192.168.0.1/24 --live 10s --json | tee arp.cache
 ```
 
 In another terminal start TCP SYN scan:
 
 ```
-while true; do cat arp.cache | ./sx tcp -p 1-65535 192.168.0.1/24 --json 2> /dev/null; sleep 10; done
+while true; do cat arp.cache | ./sx tcp -p 1-65535 192.168.0.1/24 --json 2> /dev/null; sleep 30; done
 ```
 
 ## Usage help
