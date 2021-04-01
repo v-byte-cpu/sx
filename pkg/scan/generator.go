@@ -11,7 +11,7 @@ import (
 )
 
 type PacketFiller interface {
-	Fill(packet gopacket.SerializeBuffer, pair *Request) error
+	Fill(packet gopacket.SerializeBuffer, r *Request) error
 }
 
 type PacketGenerator interface {
@@ -34,17 +34,17 @@ func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-cha
 			select {
 			case <-ctx.Done():
 				return
-			case pair, ok := <-in:
+			case r, ok := <-in:
 				if !ok {
 					return
 				}
-				if pair.Err != nil {
-					writeBufToChan(ctx, out, &packet.BufferData{Err: pair.Err})
+				if r.Err != nil {
+					writeBufToChan(ctx, out, &packet.BufferData{Err: r.Err})
 					continue
 				}
 				// TODO buffer pool
 				buf := gopacket.NewSerializeBuffer()
-				if err := g.filler.Fill(buf, pair); err != nil {
+				if err := g.filler.Fill(buf, r); err != nil {
 					writeBufToChan(ctx, out, &packet.BufferData{Err: err})
 					continue
 				}

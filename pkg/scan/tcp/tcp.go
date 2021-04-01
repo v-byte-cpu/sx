@@ -234,10 +234,10 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	return f
 }
 
-func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) (err error) {
+func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
 	eth := &layers.Ethernet{
-		SrcMAC:       pair.SrcMAC,
-		DstMAC:       pair.DstMAC,
+		SrcMAC:       r.SrcMAC,
+		DstMAC:       r.DstMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -250,15 +250,15 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request)
 		Flags:    layers.IPv4DontFragment,
 		TTL:      64,
 		Protocol: layers.IPProtocolTCP,
-		SrcIP:    pair.SrcIP,
-		DstIP:    pair.DstIP,
+		SrcIP:    r.SrcIP,
+		DstIP:    r.DstIP,
 	}
 
 	tcp := &layers.TCP{
 		// emulate Linux default ephemeral ports range: 32768 60999
 		// cat /proc/sys/net/ipv4/ip_local_port_range
 		SrcPort: layers.TCPPort(32768 + rand.Intn(61000-32768)),
-		DstPort: layers.TCPPort(pair.DstPort),
+		DstPort: layers.TCPPort(r.DstPort),
 		Seq:     rand.Uint32(),
 		SYN:     f.SYN,
 		ACK:     f.ACK,
