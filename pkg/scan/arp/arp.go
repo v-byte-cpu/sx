@@ -81,9 +81,9 @@ func NewPacketFiller() *PacketFiller {
 	return &PacketFiller{}
 }
 
-func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) error {
+func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) error {
 	eth := &layers.Ethernet{
-		SrcMAC:       pair.SrcMAC,
+		SrcMAC:       r.SrcMAC,
 		DstMAC:       net.HardwareAddr{0xff, 0xff, 0xff, 0xff, 0xff, 0xff},
 		EthernetType: layers.EthernetTypeARP,
 	}
@@ -94,10 +94,10 @@ func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) e
 		HwAddressSize:     uint8(6),
 		ProtAddressSize:   uint8(4),
 		Operation:         layers.ARPRequest,
-		SourceHwAddress:   pair.SrcMAC,
-		SourceProtAddress: pair.SrcIP,
+		SourceHwAddress:   r.SrcMAC,
+		SourceProtAddress: r.SrcIP,
 		DstHwAddress:      net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-		DstProtAddress:    pair.DstIP.To4(),
+		DstProtAddress:    r.DstIP.To4(),
 	}
 
 	var opt gopacket.SerializeOptions

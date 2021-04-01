@@ -90,10 +90,10 @@ func NewPacketFiller() *PacketFiller {
 	return &PacketFiller{}
 }
 
-func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) (err error) {
+func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
 	eth := &layers.Ethernet{
-		SrcMAC:       pair.SrcMAC,
-		DstMAC:       pair.DstMAC,
+		SrcMAC:       r.SrcMAC,
+		DstMAC:       r.DstMAC,
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 
@@ -106,15 +106,15 @@ func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, pair *scan.Request) (
 		Flags:    layers.IPv4DontFragment,
 		TTL:      64,
 		Protocol: layers.IPProtocolUDP,
-		SrcIP:    pair.SrcIP,
-		DstIP:    pair.DstIP,
+		SrcIP:    r.SrcIP,
+		DstIP:    r.DstIP,
 	}
 
 	udp := &layers.UDP{
 		// emulate Linux default ephemeral ports range: 32768 60999
 		// cat /proc/sys/net/ipv4/ip_local_port_range
 		SrcPort: layers.UDPPort(32768 + rand.Intn(61000-32768)),
-		DstPort: layers.UDPPort(pair.DstPort),
+		DstPort: layers.UDPPort(r.DstPort),
 	}
 
 	if err = udp.SetNetworkLayerForChecksum(ip); err != nil {
