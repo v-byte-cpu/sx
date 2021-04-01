@@ -95,8 +95,8 @@ type ScanMethod struct {
 	rcvTCP     layers.TCP
 }
 
-// Assert that tcp.ScanMethod conforms to the scan.Method interface
-var _ scan.Method = (*ScanMethod)(nil)
+// Assert that tcp.ScanMethod conforms to the scan.PacketMethod interface
+var _ scan.PacketMethod = (*ScanMethod)(nil)
 
 type ScanMethodOption func(s *ScanMethod)
 

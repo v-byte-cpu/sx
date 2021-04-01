@@ -51,10 +51,13 @@ func startTCPSYNScan(ctx context.Context, subnet string) (err error) {
 		withTCPPacketFlags(tcp.EmptyFlags),
 	)
 
-	return startEngine(ctx, newEngineConfig(
-		withLogger(conf.logger),
-		withScanRange(conf.scanRange),
-		withScanMethod(m),
+	return startPacketScanEngine(ctx, newPacketScanConfig(
+		withPacketScanMethod(m),
 		// TODO SYN,ACK filter
-		withBPFFilter(tcp.BPFFilter)))
+		withPacketBPFFilter(tcp.BPFFilter),
+		withPacketEngineConfig(newEngineConfig(
+			withLogger(conf.logger),
+			withScanRange(conf.scanRange),
+		)),
+	))
 }

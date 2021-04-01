@@ -306,8 +306,6 @@ type bpfFilterFunc func(r *scan.Range) (filter string, maxPacketLength int)
 type engineConfig struct {
 	logger     log.Logger
 	scanRange  *scan.Range
-	scanMethod resultScanMethod
-	bpfFilter  bpfFilterFunc
 	rateCount  int
 	rateWindow time.Duration
 	exitDelay  time.Duration
@@ -327,18 +325,6 @@ func withScanRange(r *scan.Range) engineConfigOption {
 	}
 }
 
-func withScanMethod(sm resultScanMethod) engineConfigOption {
-	return func(c *engineConfig) {
-		c.scanMethod = sm
-	}
-}
-
-func withBPFFilter(bpfFilter bpfFilterFunc) engineConfigOption {
-	return func(c *engineConfig) {
-		c.bpfFilter = bpfFilter
-	}
-}
-
 func newEngineConfig(opts ...engineConfigOption) *engineConfig {
 	c := &engineConfig{
 		rateCount:  cliRateCount,
@@ -351,18 +337,42 @@ func newEngineConfig(opts ...engineConfigOption) *engineConfig {
 	return c
 }
 
-type resultScanMethod interface {
-	scan.Method
-	Results() <-chan scan.Result
+type packetScanConfig struct {
+	*engineConfig
+	scanMethod scan.PacketMethod
+	bpfFilter  bpfFilterFunc
 }
 
-func startEngine(ctx context.Context, conf *engineConfig) error {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+type packetScanConfigOption func(c *packetScanConfig)
 
+func withPacketEngineConfig(conf *engineConfig) packetScanConfigOption {
+	return func(c *packetScanConfig) {
+		c.engineConfig = conf
+	}
+}
+
+func withPacketScanMethod(sm scan.PacketMethod) packetScanConfigOption {
+	return func(c *packetScanConfig) {
+		c.scanMethod = sm
+	}
+}
+
+func withPacketBPFFilter(bpfFilter bpfFilterFunc) packetScanConfigOption {
+	return func(c *packetScanConfig) {
+		c.bpfFilter = bpfFilter
+	}
+}
+
+func newPacketScanConfig(opts ...packetScanConfigOption) *packetScanConfig {
+	c := &packetScanConfig{}
+	for _, o := range opts {
+		o(c)
+	}
+	return c
+}
+
+func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 	r := conf.scanRange
-	m := conf.scanMethod
-	logger := conf.logger
 
 	// setup network interface to read/write packets
 	afps, err := afpacket.NewPacketSource(r.Interface.Name)
@@ -380,18 +390,26 @@ func startEngine(ctx context.Context, conf *engineConfig) error {
 		rw = packet.NewRateLimitReadWriter(afps,
 			ratelimit.New(conf.rateCount, ratelimit.Per(conf.rateWindow)))
 	}
+	engine := scan.SetupPacketEngine(rw, conf.scanMethod)
+	return startScanEngine(ctx, engine, conf.engineConfig)
+}
+
+func startScanEngine(ctx context.Context, engine scan.EngineResulter, conf *engineConfig) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	logger := conf.logger
 
 	// setup result logging
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		logger.LogResults(ctx, m.Results())
+		logger.LogResults(ctx, engine.Results())
 	}()
 
 	// start scan
-	engine := scan.SetupEngine(rw, m)
-	done, errc := engine.Start(ctx, r)
+	done, errc := engine.Start(ctx, conf.scanRange)
 	go func() {
 		defer cancel()
 		<-done

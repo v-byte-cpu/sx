@@ -24,7 +24,7 @@ type ScanMethod struct {
 }
 
 // Assert that arp.ScanMethod conforms to the scan.Method interface
-var _ scan.Method = (*ScanMethod)(nil)
+var _ scan.PacketMethod = (*ScanMethod)(nil)
 
 //easyjson:json
 type ScanResult struct {

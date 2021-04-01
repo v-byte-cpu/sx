@@ -44,8 +44,8 @@ type ScanMethod struct {
 	rcvICMP    layers.ICMPv4
 }
 
-// Assert that tcp.ScanMethod conforms to the scan.Method interface
-var _ scan.Method = (*ScanMethod)(nil)
+// Assert that tcp.ScanMethod conforms to the scan.PacketMethod interface
+var _ scan.PacketMethod = (*ScanMethod)(nil)
 
 func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
 	sm := &ScanMethod{
