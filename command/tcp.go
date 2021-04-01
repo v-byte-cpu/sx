@@ -88,11 +88,14 @@ var tcpCmd = &cobra.Command{
 			withTCPPacketFlags(tcp.AllFlags),
 		)
 
-		return startEngine(ctx, newEngineConfig(
-			withLogger(conf.logger),
-			withScanRange(conf.scanRange),
-			withScanMethod(m),
-			withBPFFilter(tcp.BPFFilter)))
+		return startPacketScanEngine(ctx, newPacketScanConfig(
+			withPacketScanMethod(m),
+			withPacketBPFFilter(tcp.BPFFilter),
+			withPacketEngineConfig(newEngineConfig(
+				withLogger(conf.logger),
+				withScanRange(conf.scanRange),
+			)),
+		))
 	},
 }
 

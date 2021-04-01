@@ -60,11 +60,14 @@ var arpCmd = &cobra.Command{
 
 		m := newARPScanMethod(ctx)
 
-		return startEngine(ctx, newEngineConfig(
-			withLogger(logger),
-			withScanRange(r),
-			withScanMethod(m),
-			withBPFFilter(arp.BPFFilter)))
+		return startPacketScanEngine(ctx, newPacketScanConfig(
+			withPacketScanMethod(m),
+			withPacketBPFFilter(arp.BPFFilter),
+			withPacketEngineConfig(newEngineConfig(
+				withLogger(logger),
+				withScanRange(r),
+			)),
+		))
 	},
 }
 

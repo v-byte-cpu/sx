@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_engine_test.go -source=engine.go
+//go:generate mockgen -package scan -destination=mock_engine_test.go . PacketSource
 
 package scan
 
@@ -21,9 +21,29 @@ type Range struct {
 	SrcSubnet *net.IPNet
 	SrcIP     net.IP
 	SrcMAC    net.HardwareAddr
-	StartPort uint16
-	EndPort   uint16
 	Ports     []*PortRange
+}
+
+type Engine interface {
+	Start(ctx context.Context, r *Range) (done <-chan interface{}, errc <-chan error)
+}
+
+type Resulter interface {
+	Results() <-chan Result
+}
+
+type EngineResulter interface {
+	Engine
+	Resulter
+}
+
+type engineResulter struct {
+	Engine
+	Resulter
+}
+
+func NewEngineResulter(e Engine, r Resulter) EngineResulter {
+	return &engineResulter{Engine: e, Resulter: r}
 }
 
 type PacketSource interface {
@@ -50,17 +70,17 @@ func (s *packetSource) Packets(ctx context.Context, r *Range) <-chan *packet.Buf
 	return s.pktgen.Packets(ctx, requests)
 }
 
-type Engine struct {
+type PacketEngine struct {
 	src PacketSource
-	rcv packet.Receiver
 	snd packet.Sender
+	rcv packet.Receiver
 }
 
-func NewEngine(ps PacketSource, s packet.Sender, r packet.Receiver) *Engine {
-	return &Engine{src: ps, snd: s, rcv: r}
+func NewPacketEngine(ps PacketSource, s packet.Sender, r packet.Receiver) *PacketEngine {
+	return &PacketEngine{src: ps, snd: s, rcv: r}
 }
 
-func (e *Engine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
+func (e *PacketEngine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
 	packets := e.src.Packets(ctx, r)
 	done, errc1 := e.snd.SendPackets(ctx, packets)
 	errc2 := e.rcv.ReceivePackets(ctx)
@@ -101,14 +121,15 @@ func mergeErrChan(ctx context.Context, channels ...<-chan error) <-chan error {
 	return out
 }
 
-type Method interface {
+type PacketMethod interface {
 	PacketSource
 	packet.Processor
+	Resulter
 }
 
-func SetupEngine(rw packet.ReadWriter, m Method) *Engine {
+func SetupPacketEngine(rw packet.ReadWriter, m PacketMethod) EngineResulter {
 	sender := packet.NewSender(rw)
 	receiver := packet.NewReceiver(rw, m)
-	engine := NewEngine(m, sender, receiver)
-	return engine
+	engine := NewPacketEngine(m, sender, receiver)
+	return NewEngineResulter(engine, m)
 }

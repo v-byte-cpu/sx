@@ -43,11 +43,14 @@ var udpCmd = &cobra.Command{
 
 		m := newUDPScanMethod(ctx, conf)
 
-		return startEngine(ctx, newEngineConfig(
-			withLogger(conf.logger),
-			withScanRange(conf.scanRange),
-			withScanMethod(m),
-			withBPFFilter(icmp.BPFFilter)))
+		return startPacketScanEngine(ctx, newPacketScanConfig(
+			withPacketScanMethod(m),
+			withPacketBPFFilter(icmp.BPFFilter),
+			withPacketEngineConfig(newEngineConfig(
+				withLogger(conf.logger),
+				withScanRange(conf.scanRange),
+			)),
+		))
 	},
 }
 

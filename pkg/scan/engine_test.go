@@ -78,7 +78,7 @@ func TestMergeErrChanContextExit(t *testing.T) {
 	assert.Equal(t, 0, len(result), "error slice is not empty")
 }
 
-func TestEngineStartCollectsAllErrors(t *testing.T) {
+func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
 	t.Parallel()
 
 	ctrl := gomock.NewController(t)
@@ -99,7 +99,7 @@ func TestEngineStartCollectsAllErrors(t *testing.T) {
 	close(errc2)
 	r := NewMockReceiver(ctrl)
 	r.EXPECT().ReceivePackets(notNil).Return(errc2)
-	e := NewEngine(ps, s, r)
+	e := NewPacketEngine(ps, s, r)
 
 	_, out := e.Start(context.Background(), &Range{
 		DstSubnet: &net.IPNet{
