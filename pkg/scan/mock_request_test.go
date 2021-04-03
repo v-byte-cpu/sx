@@ -50,6 +50,44 @@ func (mr *MockPortGeneratorMockRecorder) Ports(ctx, r interface{}) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ports", reflect.TypeOf((*MockPortGenerator)(nil).Ports), ctx, r)
 }
 
+// MockIPGetter is a mock of IPGetter interface.
+type MockIPGetter struct {
+	ctrl     *gomock.Controller
+	recorder *MockIPGetterMockRecorder
+}
+
+// MockIPGetterMockRecorder is the mock recorder for MockIPGetter.
+type MockIPGetterMockRecorder struct {
+	mock *MockIPGetter
+}
+
+// NewMockIPGetter creates a new mock instance.
+func NewMockIPGetter(ctrl *gomock.Controller) *MockIPGetter {
+	mock := &MockIPGetter{ctrl: ctrl}
+	mock.recorder = &MockIPGetterMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIPGetter) EXPECT() *MockIPGetterMockRecorder {
+	return m.recorder
+}
+
+// GetIP mocks base method.
+func (m *MockIPGetter) GetIP() (net.IP, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIP")
+	ret0, _ := ret[0].(net.IP)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIP indicates an expected call of GetIP.
+func (mr *MockIPGetterMockRecorder) GetIP() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIP", reflect.TypeOf((*MockIPGetter)(nil).GetIP))
+}
+
 // MockIPGenerator is a mock of IPGenerator interface.
 type MockIPGenerator struct {
 	ctrl     *gomock.Controller
@@ -74,10 +112,10 @@ func (m *MockIPGenerator) EXPECT() *MockIPGeneratorMockRecorder {
 }
 
 // IPs mocks base method.
-func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan net.IP, error) {
+func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan IPGetter, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IPs", ctx, r)
-	ret0, _ := ret[0].(<-chan net.IP)
+	ret0, _ := ret[0].(<-chan IPGetter)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

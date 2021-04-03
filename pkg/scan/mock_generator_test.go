@@ -37,17 +37,17 @@ func (m *MockPacketFiller) EXPECT() *MockPacketFillerMockRecorder {
 }
 
 // Fill mocks base method.
-func (m *MockPacketFiller) Fill(packet gopacket.SerializeBuffer, pair *Request) error {
+func (m *MockPacketFiller) Fill(packet gopacket.SerializeBuffer, r *Request) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Fill", packet, pair)
+	ret := m.ctrl.Call(m, "Fill", packet, r)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Fill indicates an expected call of Fill.
-func (mr *MockPacketFillerMockRecorder) Fill(packet, pair interface{}) *gomock.Call {
+func (mr *MockPacketFillerMockRecorder) Fill(packet, r interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fill", reflect.TypeOf((*MockPacketFiller)(nil).Fill), packet, pair)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Fill", reflect.TypeOf((*MockPacketFiller)(nil).Fill), packet, r)
 }
 
 // MockPacketGenerator is a mock of PacketGenerator interface.

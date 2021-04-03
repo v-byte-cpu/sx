@@ -2,11 +2,14 @@ package scan
 
 import (
 	"context"
+	"errors"
+	"io"
+	"io/ioutil"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,50 +73,6 @@ func withDstPort(dstPort uint16) scanRequestOption {
 	}
 }
 
-func TestPortGeneratorWithInvalidInput(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		scanRange *Range
-	}{
-		{
-			name:      "NilPorts",
-			scanRange: newScanRange(withPorts(nil)),
-		},
-		{
-			name: "InvalidPortRange",
-			scanRange: newScanRange(withPorts([]*PortRange{
-				{
-					StartPort: 5000,
-					EndPort:   2000,
-				},
-			})),
-		},
-		{
-			name: "InvalidPortRangeAfterValid",
-			scanRange: newScanRange(withPorts([]*PortRange{
-				{
-					StartPort: 1000,
-					EndPort:   1000,
-				},
-				{
-					StartPort: 7000,
-					EndPort:   5000,
-				},
-			})),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			portgen := NewPortGenerator()
-			_, err := portgen.Ports(context.Background(), tt.scanRange)
-			require.Error(t, err)
-		})
-	}
-}
-
 func chanPortToGeneric(in <-chan uint16) <-chan interface{} {
 	out := make(chan interface{}, cap(in))
 	go func() {
@@ -132,7 +91,37 @@ func TestPortGenerator(t *testing.T) {
 		name      string
 		scanRange *Range
 		expected  []interface{}
+		err       bool
 	}{
+		{
+			name:      "NilPorts",
+			scanRange: newScanRange(withPorts(nil)),
+			err:       true,
+		},
+		{
+			name: "InvalidPortRange",
+			scanRange: newScanRange(withPorts([]*PortRange{
+				{
+					StartPort: 5000,
+					EndPort:   2000,
+				},
+			})),
+			err: true,
+		},
+		{
+			name: "InvalidPortRangeAfterValid",
+			scanRange: newScanRange(withPorts([]*PortRange{
+				{
+					StartPort: 1000,
+					EndPort:   1000,
+				},
+				{
+					StartPort: 7000,
+					EndPort:   5000,
+				},
+			})),
+			err: true,
+		},
 		{
 			name: "OnePort",
 			scanRange: newScanRange(withPorts([]*PortRange{
@@ -213,42 +202,20 @@ func TestPortGenerator(t *testing.T) {
 				defer close(done)
 				portgen := NewPortGenerator()
 				ports, err := portgen.Ports(context.Background(), tt.scanRange)
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPortToGeneric(ports), len(tt.expected))
 				require.Equal(t, tt.expected, result)
 			}()
-			select {
-			case <-done:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "test timeout")
-			}
+			waitDone(t, done)
 		})
 	}
 }
 
-func TestIPGeneratorWithInvalidInput(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		scanRange *Range
-	}{
-		{
-			name:      "NilSubnet",
-			scanRange: newScanRange(withSubnet(nil)),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ipgen := NewIPGenerator()
-			_, err := ipgen.IPs(context.Background(), tt.scanRange)
-			require.Error(t, err)
-		})
-	}
-}
-
-func chanIPToGeneric(in <-chan net.IP) <-chan interface{} {
+func chanIPToGeneric(in <-chan IPGetter) <-chan interface{} {
 	out := make(chan interface{}, cap(in))
 	go func() {
 		defer close(out)
@@ -266,13 +233,21 @@ func TestIPGenerator(t *testing.T) {
 		name      string
 		scanRange *Range
 		expected  []interface{}
+		err       bool
 	}{
+		{
+			name:      "NilSubnet",
+			scanRange: newScanRange(withSubnet(nil)),
+			err:       true,
+		},
 		{
 			name: "OneIP",
 			scanRange: newScanRange(
 				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
 			),
-			expected: []interface{}{net.IPv4(192, 168, 0, 1).To4()},
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1).To4()),
+			},
 		},
 		{
 			name: "TwoIPs",
@@ -280,8 +255,8 @@ func TestIPGenerator(t *testing.T) {
 				withSubnet(&net.IPNet{IP: net.IPv4(1, 0, 0, 1), Mask: net.CIDRMask(31, 32)}),
 			),
 			expected: []interface{}{
-				net.IPv4(1, 0, 0, 0).To4(),
-				net.IPv4(1, 0, 0, 1).To4(),
+				wrapIP(net.IPv4(1, 0, 0, 0).To4()),
+				wrapIP(net.IPv4(1, 0, 0, 1).To4()),
 			},
 		},
 		{
@@ -290,10 +265,10 @@ func TestIPGenerator(t *testing.T) {
 				withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 1), Mask: net.CIDRMask(30, 32)}),
 			),
 			expected: []interface{}{
-				net.IPv4(10, 0, 0, 0).To4(),
-				net.IPv4(10, 0, 0, 1).To4(),
-				net.IPv4(10, 0, 0, 2).To4(),
-				net.IPv4(10, 0, 0, 3).To4(),
+				wrapIP(net.IPv4(10, 0, 0, 0).To4()),
+				wrapIP(net.IPv4(10, 0, 0, 1).To4()),
+				wrapIP(net.IPv4(10, 0, 0, 2).To4()),
+				wrapIP(net.IPv4(10, 0, 0, 3).To4()),
 			},
 		},
 	}
@@ -308,50 +283,15 @@ func TestIPGenerator(t *testing.T) {
 				defer close(done)
 				ipgen := NewIPGenerator()
 				ips, err := ipgen.IPs(context.Background(), tt.scanRange)
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
 				require.Equal(t, tt.expected, result)
 			}()
-			select {
-			case <-done:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "test timeout")
-			}
-		})
-	}
-}
-
-func TestIPPortRequestGeneratorWithInvalidInput(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name      string
-		startPort uint16
-		endPort   uint16
-		subnets   []net.IPNet
-		scanRange *Range
-	}{
-		{
-			name: "InvalidPortRange",
-			scanRange: newScanRange(
-				withPorts([]*PortRange{
-					{
-						StartPort: 5000,
-						EndPort:   2000,
-					},
-				}),
-			),
-		},
-		{
-			name:      "NilSubnet",
-			scanRange: newScanRange(withSubnet(nil)),
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			reqgen := NewIPPortRequestGenerator(NewIPGenerator(), NewPortGenerator())
-			_, err := reqgen.GenerateRequests(context.Background(), tt.scanRange)
-			assert.Error(t, err)
+			waitDone(t, done)
 		})
 	}
 }
@@ -367,14 +307,32 @@ func chanPairToGeneric(in <-chan *Request) <-chan interface{} {
 	return out
 }
 
-func TestIPPortRequestRegenerator(t *testing.T) {
+func TestIPPortGenerator(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		input    *Range
 		expected []interface{}
+		err      bool
 	}{
+		{
+			name: "InvalidPortRange",
+			input: newScanRange(
+				withPorts([]*PortRange{
+					{
+						StartPort: 5000,
+						EndPort:   2000,
+					},
+				}),
+			),
+			err: true,
+		},
+		{
+			name:  "NilSubnet",
+			input: newScanRange(withSubnet(nil)),
+			err:   true,
+		},
 		{
 			name: "OneIpOnePort",
 			input: newScanRange(
@@ -484,37 +442,35 @@ func TestIPPortRequestRegenerator(t *testing.T) {
 			go func() {
 				defer close(done)
 
-				reqgen := NewIPPortRequestGenerator(NewIPGenerator(), NewPortGenerator())
+				reqgen := NewIPPortGenerator(NewIPGenerator(), NewPortGenerator())
 				pairs, err := reqgen.GenerateRequests(context.Background(), tt.input)
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
 				require.Equal(t, tt.expected, result)
 			}()
-			select {
-			case <-done:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "test timeout")
-			}
+			waitDone(t, done)
 		})
 	}
 }
 
-func TestIPRequestGeneratorWithInvalidInput(t *testing.T) {
-	t.Parallel()
-
-	reqgen := NewIPRequestGenerator(NewIPGenerator())
-	_, err := reqgen.GenerateRequests(context.Background(), newScanRange(withSubnet(nil)))
-	assert.Error(t, err)
-}
-
-func TestIPRequestRegenerator(t *testing.T) {
+func TestIPRequestGenerator(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name     string
 		input    *Range
 		expected []interface{}
+		err      bool
 	}{
+		{
+			name:  "NilSubnet",
+			input: newScanRange(withSubnet(nil)),
+			err:   true,
+		},
 		{
 			name: "OneIP",
 			input: newScanRange(
@@ -559,15 +515,228 @@ func TestIPRequestRegenerator(t *testing.T) {
 
 				reqgen := NewIPRequestGenerator(NewIPGenerator())
 				pairs, err := reqgen.GenerateRequests(context.Background(), tt.input)
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
 				require.Equal(t, tt.expected, result)
 			}()
-			select {
-			case <-done:
-			case <-time.After(waitTimeout):
-				require.Fail(t, "test timeout")
-			}
+			waitDone(t, done)
+		})
+	}
+}
+
+func TestFileIPPortGeneratorWithInvalidFile(t *testing.T) {
+	t.Parallel()
+
+	reqgen := NewFileIPPortGenerator(func() (io.ReadCloser, error) {
+		return nil, errors.New("open file error")
+	})
+	_, err := reqgen.GenerateRequests(context.Background(), &Range{})
+	require.Error(t, err)
+}
+
+func TestFileIPPortGenerator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []interface{}
+	}{
+		{
+			name:  "OneIPPort",
+			input: `{"ip":"192.168.0.1","port":888}`,
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+			},
+		},
+		{
+			name:  "OneIPPortWithUnknownField",
+			input: `{"ip":"192.168.0.1","port":888,"abc":"field"}`,
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+			},
+		},
+		{
+			name: "TwoIPPorts",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192.168.0.2","port":222}`,
+			}, "\n"),
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				&Request{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 222},
+			},
+		},
+		{
+			name:  "InvalidJSON",
+			input: `{"ip":"192`,
+			expected: []interface{}{
+				&Request{Err: ErrJSON},
+			},
+		},
+		{
+			name: "InvalidJSONAfterValid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192`,
+			}, "\n"),
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				&Request{Err: ErrJSON},
+			},
+		},
+		{
+			name: "ValidJSONAfterInvalid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192`,
+				`{"ip":"192.168.0.3","port":888}`,
+			}, "\n"),
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				&Request{Err: ErrJSON},
+			},
+		},
+		{
+			name:  "InvalidIP",
+			input: `{"ip":"192.168.0.1111","port":888}`,
+			expected: []interface{}{
+				&Request{Err: ErrIP},
+			},
+		},
+		{
+			name:  "InvalidPort",
+			input: `{"ip":"192.168.0.1","port":88888}`,
+			expected: []interface{}{
+				&Request{Err: ErrPort},
+			},
+		},
+	}
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				reqgen := NewFileIPPortGenerator(func() (io.ReadCloser, error) {
+					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+				})
+				pairs, err := reqgen.GenerateRequests(context.Background(), &Range{})
+				require.NoError(t, err)
+				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
+				require.Equal(t, tt.expected, result)
+			}()
+			waitDone(t, done)
+		})
+	}
+}
+
+func TestFileIPGeneratorWithInvalidFile(t *testing.T) {
+	t.Parallel()
+
+	ipgen := NewFileIPGenerator(func() (io.ReadCloser, error) {
+		return nil, errors.New("open file error")
+	})
+	_, err := ipgen.IPs(context.Background(), &Range{})
+	require.Error(t, err)
+}
+
+func TestFileIPGenerator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []interface{}
+	}{
+		{
+			name:  "OneIP",
+			input: `{"ip":"192.168.0.1"}`,
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1)),
+			},
+		},
+		{
+			name:  "OneIPWithUnknownField",
+			input: `{"ip":"192.168.0.1","abc":"field"}`,
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1)),
+			},
+		},
+		{
+			name: "TwoIPs",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1"}`,
+				`{"ip":"192.168.0.2"}`,
+			}, "\n"),
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1)),
+				wrapIP(net.IPv4(192, 168, 0, 2)),
+			},
+		},
+		{
+			name:  "InvalidJSON",
+			input: `{"ip":"192`,
+			expected: []interface{}{
+				&ipError{error: ErrJSON},
+			},
+		},
+		{
+			name: "InvalidJSONAfterValid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192`,
+			}, "\n"),
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1)),
+				&ipError{error: ErrJSON},
+			},
+		},
+		{
+			name: "ValidJSONAfterInvalid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192`,
+				`{"ip":"192.168.0.3","port":888}`,
+			}, "\n"),
+			expected: []interface{}{
+				wrapIP(net.IPv4(192, 168, 0, 1)),
+				&ipError{error: ErrJSON},
+			},
+		},
+		{
+			name:  "InvalidIP",
+			input: `{"ip":"192.168.0.1111"}`,
+			expected: []interface{}{
+				&ipError{error: ErrIP},
+			},
+		},
+	}
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				ipgen := NewFileIPGenerator(func() (io.ReadCloser, error) {
+					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+				})
+				ips, err := ipgen.IPs(context.Background(), &Range{})
+				require.NoError(t, err)
+				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
+				require.Equal(t, tt.expected, result)
+			}()
+			waitDone(t, done)
 		})
 	}
 }
@@ -575,7 +744,7 @@ func TestIPRequestRegenerator(t *testing.T) {
 func TestLiveRequestGeneratorContextExit(t *testing.T) {
 	t.Parallel()
 
-	reqgen := NewIPPortRequestGenerator(NewIPGenerator(), NewPortGenerator())
+	reqgen := NewIPPortGenerator(NewIPGenerator(), NewPortGenerator())
 	rg := NewLiveRequestGenerator(reqgen, 5*time.Second)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

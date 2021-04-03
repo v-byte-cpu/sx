@@ -40,3 +40,12 @@ func chanErrToGeneric(in <-chan error) <-chan interface{} {
 	}()
 	return out
 }
+
+func waitDone(t *testing.T, done <-chan interface{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(waitTimeout):
+		require.Fail(t, "test timeout")
+	}
+}

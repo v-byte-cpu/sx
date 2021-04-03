@@ -72,11 +72,13 @@ var (
 	cliRateLimitFlag    string
 	cliExitDelayFlag    string
 	cliARPCacheFileFlag string
+	cliIPPortFileFlag   string
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
 	cliSrcMAC     net.HardwareAddr
 	cliPortRanges []*scan.PortRange
+	cliDstSubnet  *net.IPNet
 	cliRateCount  int
 	cliRateWindow time.Duration
 	cliExitDelay  = 300 * time.Millisecond
@@ -299,6 +301,21 @@ func getGatewayIP(r *scan.Range) (gatewayIP net.IP, err error) {
 	}
 	gatewayIP = gatewayIP.To4()
 	return
+}
+
+func newIPPortGenerator() (reqgen scan.RequestGenerator) {
+	if len(cliIPPortFileFlag) == 0 {
+		return scan.NewIPPortGenerator(scan.NewIPGenerator(), scan.NewPortGenerator())
+	}
+	if len(cliPortRanges) == 0 {
+		return scan.NewFileIPPortGenerator(func() (io.ReadCloser, error) {
+			return os.Open(cliIPPortFileFlag)
+		})
+	}
+	ipgen := scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
+		return os.Open(cliIPPortFileFlag)
+	})
+	return scan.NewIPPortGenerator(ipgen, scan.NewPortGenerator())
 }
 
 type bpfFilterFunc func(r *scan.Range) (filter string, maxPacketLength int)

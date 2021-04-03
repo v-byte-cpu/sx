@@ -165,7 +165,7 @@ func newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConf
 	portgen := scan.NewPortGenerator()
 	ipgen := scan.NewIPGenerator()
 	reqgen := arp.NewCacheRequestGenerator(
-		scan.NewIPPortRequestGenerator(ipgen, portgen), conf.gatewayIP, conf.cache)
+		scan.NewIPPortGenerator(ipgen, portgen), conf.gatewayIP, conf.cache)
 	pktgen := scan.NewPacketMultiGenerator(c.packetFiller, runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)

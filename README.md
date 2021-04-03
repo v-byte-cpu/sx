@@ -14,6 +14,7 @@ The goal of this project is to create the fastest network scanner with clean and
   * **TCP FIN / NULL / Xmas scans**: Scan techniques to bypass some firewall rules
   * **Custom TCP scans with any TCP flags**: Send whatever exotic packets you want and get a result with all the TCP flags set in the reply packet
   * **UDP scan**: Scan UDP ports and get full ICMP replies to detect open ports or firewall rules
+  * **SOCKS5 scan**: Detect live SOCKS5 proxies by scanning ip range or list of ip/port pairs from a file
   * **JSON output support**: sx is designed specifically for convenient automatic processing of results
 
 ## Build from source
