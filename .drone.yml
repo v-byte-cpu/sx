@@ -8,27 +8,19 @@ clone:
 
 steps:
   - name: lint
-    image: golangci/golangci-lint:v1.39
+    image: golangci/golangci-lint:v1.39.0-alpine
     commands:
-      - apt-get update
-      - apt-get install -y libpcap-dev
+      - apk add libpcap-dev libc-dev linux-headers
       - golangci-lint run -v
       # go 1.16 install doesn't modify go.mod and go.sum
       - go install github.com/mgechev/revive@v1.0.3
       - revive -config .revive.toml -formatter friendly ./...
 
-  - name: test
-    image: golang:1.16
+  - name: test & build
+    image: golang:1.16-alpine
     commands:
-      - apt-get update
-      - apt-get install -y libpcap-dev
+      - apk add libpcap-dev libc-dev gcc linux-headers
       - go test ./... -v -cover
-
-  - name: build
-    image: golang:1.16
-    commands:
-      - apt-get update
-      - apt-get install -y libpcap-dev
       - go build -ldflags "-w -s"
 
 trigger:
