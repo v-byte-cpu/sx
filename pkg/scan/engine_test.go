@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"sort"
 	"testing"
 	"time"
 
@@ -154,11 +155,7 @@ func TestPacketSourceReturnsError(t *testing.T) {
 		result := <-out
 		require.Error(t, result.Err)
 	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("test timeout")
-	}
+	waitDone(t, done)
 }
 
 func TestPacketSourceReturnsData(t *testing.T) {
@@ -200,9 +197,153 @@ func TestPacketSourceReturnsData(t *testing.T) {
 		require.NoError(t, result.Err)
 		require.Equal(t, data.Buf, result.Buf)
 	}()
-	select {
-	case <-done:
-	case <-time.After(3 * time.Second):
-		t.Fatal("test timeout")
-	}
+	waitDone(t, done)
+}
+
+func TestScanEngineWithRequestGeneratorError(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		reqgen := NewMockRequestGenerator(ctrl)
+		scanner := NewMockScanner(ctrl)
+		ctx := context.Background()
+
+		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+			Return(nil, errors.New("generate error"))
+		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
+
+		_, errc := engine.Start(ctx, &Range{})
+		err := <-errc
+		require.Error(t, err)
+	}()
+	waitDone(t, done)
+}
+
+func TestScanEngineWithRequestError(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		reqgen := NewMockRequestGenerator(ctrl)
+		scanner := NewMockScanner(ctrl)
+		ctx := context.Background()
+
+		requests := make(chan *Request, 1)
+		requests <- &Request{Err: errors.New("request error")}
+		close(requests)
+		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+			Return(requests, nil)
+		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
+
+		_, errc := engine.Start(ctx, &Range{})
+		err := <-errc
+		require.Error(t, err)
+	}()
+	waitDone(t, done)
+}
+
+func TestScanEngineWithScannerError(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		reqgen := NewMockRequestGenerator(ctrl)
+		scanner := NewMockScanner(ctrl)
+		ctx := context.Background()
+
+		requests := make(chan *Request, 1)
+		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+		requests <- req1
+		close(requests)
+		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+			Return(requests, nil)
+		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).Return(nil, errors.New("scan error"))
+		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
+
+		_, errc := engine.Start(ctx, &Range{})
+		err := <-errc
+		require.Error(t, err)
+	}()
+	waitDone(t, done)
+}
+
+func TestScanEngineWithResults(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		reqgen := NewMockRequestGenerator(ctrl)
+		scanner := NewMockScanner(ctrl)
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+
+		requests := make(chan *Request, 2)
+		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+		req2 := &Request{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 22}
+		requests <- req1
+		requests <- req2
+		close(requests)
+		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+			Return(requests, nil)
+
+		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
+			Return(&mockScanResult{"id1"}, nil)
+		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req2).
+			Return(&mockScanResult{"id2"}, nil)
+
+		resultCh := NewResultChan(ctx, 10)
+		engine := NewScanEngine(reqgen, scanner, resultCh, WithScanWorkerCount(10))
+
+		done, errc := engine.Start(ctx, &Range{})
+		<-done
+		cancel()
+		require.Zero(t, len(errc), "error channel is not empty")
+		var results []Result
+		cnt := 0
+		for result := range resultCh.Chan() {
+			cnt++
+			if cnt > 2 {
+				require.Fail(t, "result channel contains more elements than expected: ", result)
+			}
+			results = append(results, result)
+		}
+
+		sort.Slice(results, func(i, j int) bool {
+			return results[i].ID() < results[j].ID()
+		})
+		require.Equal(t, results, []Result{
+			&mockScanResult{"id1"},
+			&mockScanResult{"id2"},
+		})
+	}()
+	waitDone(t, done)
+}
+
+type mockScanResult struct {
+	id string
+}
+
+func (r *mockScanResult) ID() string {
+	return r.id
+}
+
+func (r *mockScanResult) String() string {
+	return r.id
+}
+
+func (r *mockScanResult) MarshalJSON() ([]byte, error) {
+	return []byte(r.id), nil
 }

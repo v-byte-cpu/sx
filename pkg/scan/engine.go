@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_engine_test.go . PacketSource
+//go:generate mockgen -package scan -destination=mock_engine_test.go . PacketSource,Scanner
 
 package scan
 
@@ -103,11 +103,7 @@ func mergeErrChan(ctx context.Context, channels ...<-chan error) <-chan error {
 				if !ok {
 					return
 				}
-				select {
-				case <-ctx.Done():
-					return
-				case out <- e:
-				}
+				writeError(ctx, out, e)
 			}
 		}
 	}
@@ -132,4 +128,102 @@ func SetupPacketEngine(rw packet.ReadWriter, m PacketMethod) EngineResulter {
 	receiver := packet.NewReceiver(rw, m)
 	engine := NewPacketEngine(m, sender, receiver)
 	return NewEngineResulter(engine, m)
+}
+
+type Scanner interface {
+	Scan(ctx context.Context, r *Request) (Result, error)
+}
+
+type GenericEngine struct {
+	reqgen      RequestGenerator
+	scanner     Scanner
+	results     ResultChan
+	workerCount int
+}
+
+// Assert that GenericEngine conforms to the scan.EngineResulter interface
+var _ EngineResulter = (*GenericEngine)(nil)
+
+type GenericEngineOption func(s *GenericEngine)
+
+func WithScanWorkerCount(workerCount int) GenericEngineOption {
+	return func(s *GenericEngine) {
+		s.workerCount = workerCount
+	}
+}
+
+func NewScanEngine(reqgen RequestGenerator,
+	scanner Scanner, results ResultChan, opts ...GenericEngineOption) *GenericEngine {
+	s := &GenericEngine{
+		reqgen:      reqgen,
+		scanner:     scanner,
+		results:     results,
+		workerCount: 50,
+	}
+	for _, o := range opts {
+		o(s)
+	}
+	return s
+}
+
+func (e *GenericEngine) Results() <-chan Result {
+	return e.results.Chan()
+}
+
+func (e *GenericEngine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
+	done := make(chan interface{})
+	errc := make(chan error, 100)
+	requests, err := e.reqgen.GenerateRequests(ctx, r)
+	if err != nil {
+		errc <- err
+		close(errc)
+		close(done)
+		return done, errc
+	}
+	go func() {
+		defer close(done)
+		defer close(errc)
+		var wg sync.WaitGroup
+		for i := 1; i <= e.workerCount; i++ {
+			wg.Add(1)
+			go e.worker(ctx, &wg, requests, errc)
+		}
+		wg.Wait()
+	}()
+	return done, errc
+}
+
+func (e *GenericEngine) worker(ctx context.Context, wg *sync.WaitGroup,
+	requests <-chan *Request, errc chan<- error) {
+	defer wg.Done()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case r, ok := <-requests:
+			if !ok {
+				return
+			}
+			if r.Err != nil {
+				writeError(ctx, errc, r.Err)
+				continue
+			}
+			result, err := e.scanner.Scan(ctx, r)
+			if err != nil {
+				writeError(ctx, errc, err)
+				continue
+			}
+			if result != nil {
+				e.results.Put(result)
+			}
+		}
+	}
+}
+
+func writeError(ctx context.Context, out chan<- error, err error) {
+	select {
+	case <-ctx.Done():
+		return
+	case out <- err:
+	}
 }
