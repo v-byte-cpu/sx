@@ -30,6 +30,20 @@ From the root of the source tree, run:
 go build
 ```
 
+## Docker image
+
+From the root of the source tree, run:
+
+```
+docker build -t sx .
+```
+
+Start docker container:
+
+```
+docker run --rm --net host sx arp 192.168.0.1/24
+```
+
 ## Quick Start
 
 Here's a quick examples showing how you can scan networks with `sx`.
