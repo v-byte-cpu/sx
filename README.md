@@ -291,7 +291,6 @@ For example, to limit the speed to 1 packet per 5 seconds:
 cat arp.cache | ./sx tcp --rate 1/5s --json -p 22,80,443 192.168.0.171
 ```
 
-
 ### Live LAN TCP SYN scanner
 
 As an example of scan composition, you can combine ARP and TCP SYN scans to create live TCP port scanner that periodically scan whole LAN network.
@@ -307,6 +306,40 @@ In another terminal start TCP SYN scan:
 ```
 while true; do cat arp.cache | ./sx tcp -p 1-65535 192.168.0.1/24 --json 2> /dev/null; sleep 30; done
 ```
+
+### SOCKS5 scan
+
+`sx` can detect live SOCKS5 proxies. To scan, you must specify an IP range or JSONL file with ip/port pairs.
+
+For example, an IP range scan:
+
+```
+./sx socks -p 1080 10.0.0.1/16
+```
+
+scan ip/port pairs from a file with JSON output:
+
+```
+./sx socks --json -f ip_ports_file.jsonl 2> /dev/null | tee results.jsonl
+```
+
+Each line of the input file is a json string, which must contain the **ip** and **port** fields.
+
+sample input file:
+
+```
+{"ip":"10.0.1.1","port":1080}
+{"ip":"10.0.2.2","port":1081}
+```
+
+You can also specify a range of ports to scan:
+
+```
+socks -p 1080-4567 -f ips_file.jsonl
+```
+
+In this case only ip addresses will be taken from the file and the **port** field is no longer necessary.
+
 
 ## Usage help
 
