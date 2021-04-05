@@ -77,9 +77,13 @@ func (s *Scanner) Scan(ctx context.Context, r *scan.Request) (result scan.Result
 		return
 	}
 	defer conn.Close()
-	// tell the operating system to discard any unsent or unacknowledged data on Close(),
-	// after a maximum of 1 second it will release all socket resources and send RST packet,
-	// fine for the scan
+	// wait a maximum of 1 second for normal confirmation of connection termination ( FIN,ACK )
+	// on Close() instead of default net.ipv4.tcp_fin_timeout = 60 seconds;
+	// if this time has elapsed, the operating system will discard any unsent or unacknowledged
+	// data, send RST packet and release all socket resources, fine for the scan;
+	// note that in normal case ( FIN,ACK received ) the socket goes to the TIME-WAIT state anyway,
+	// it limits the maximum number of open outbound network connections
+	// so setting net.ipv4.tcp_tw_reuse to 1 is useful
 	if err = conn.(*net.TCPConn).SetLinger(1); err != nil {
 		return
 	}
