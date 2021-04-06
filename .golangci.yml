@@ -30,6 +30,10 @@ issues:
       linters:
         - gosec
       text: "G402" # TLS insecure; used in Elasticsearch scan to ignore TLS cert
+    - path: pkg/scan/docker
+      linters:
+        - gosec
+      text: "G402" # TLS insecure; used in Docker scan to ignore TLS cert
     - linters:
         - funlen
       path: _test\.go

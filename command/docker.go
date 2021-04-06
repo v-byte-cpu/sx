@@ -12,23 +12,23 @@ import (
 	"github.com/v-byte-cpu/sx/command/log"
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/elastic"
+	"github.com/v-byte-cpu/sx/pkg/scan/docker"
 )
 
 func init() {
-	elasticCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
-	elasticCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
-	elasticCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
-	rootCmd.AddCommand(elasticCmd)
+	dockerCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
+	dockerCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
+	dockerCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
+	rootCmd.AddCommand(dockerCmd)
 }
 
-var elasticCmd = &cobra.Command{
-	Use: "elastic [flags] [subnet]",
+var dockerCmd = &cobra.Command{
+	Use: "docker [flags] [subnet]",
 	Example: strings.Join([]string{
-		"elastic -p 9200 192.168.0.1/24", "elastic -p 9200-9300 10.0.0.1",
-		"elastic --proto https -p 9200-9201 192.168.0.3",
-		"elastic -f ip_ports_file.jsonl", "elastic -p 9200-9300 -f ips_file.jsonl"}, "\n"),
-	Short: "Perform Elasticsearch scan",
+		"docker -p 2375 192.168.0.1/24", "docker -p 2300-2500 10.0.0.1",
+		"docker --proto https -p 2300-2500 192.168.0.3",
+		"docker -f ip_ports_file.jsonl", "docker -p 9200-9300 -f ips_file.jsonl"}, "\n"),
+	Short: "Perform Docker scan",
 	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		if len(cliProtoFlag) == 0 {
 			cliProtoFlag = cliHTTPProtoFlag
@@ -50,11 +50,11 @@ var elasticCmd = &cobra.Command{
 		defer cancel()
 
 		var logger log.Logger
-		if logger, err = getLogger("elastic", os.Stdout); err != nil {
+		if logger, err = getLogger("docker", os.Stdout); err != nil {
 			return
 		}
 
-		engine := newElasticScanEngine(ctx)
+		engine := newDockerScanEngine(ctx)
 		return startScanEngine(ctx, engine,
 			newEngineConfig(
 				withLogger(logger),
@@ -66,9 +66,9 @@ var elasticCmd = &cobra.Command{
 	},
 }
 
-func newElasticScanEngine(ctx context.Context) scan.EngineResulter {
+func newDockerScanEngine(ctx context.Context) scan.EngineResulter {
 	// TODO custom dataTimeout
-	scanner := elastic.NewScanner(cliProtoFlag, elastic.WithDataTimeout(5*time.Second))
+	scanner := docker.NewScanner(cliProtoFlag, docker.WithDataTimeout(10*time.Second))
 	results := scan.NewResultChan(ctx, 1000)
 	// TODO custom workerCount
 	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(50))

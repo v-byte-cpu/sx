@@ -73,6 +73,7 @@ var (
 	cliExitDelayFlag    string
 	cliARPCacheFileFlag string
 	cliIPPortFileFlag   string
+	cliProtoFlag        string
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -82,6 +83,11 @@ var (
 	cliRateCount  int
 	cliRateWindow time.Duration
 	cliExitDelay  = 300 * time.Millisecond
+)
+
+const (
+	cliHTTPProtoFlag  = "http"
+	cliHTTPSProtoFlag = "https"
 )
 
 var (
