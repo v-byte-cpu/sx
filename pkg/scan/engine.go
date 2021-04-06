@@ -208,6 +208,7 @@ func (e *GenericEngine) worker(ctx context.Context, wg *sync.WaitGroup,
 				writeError(ctx, errc, r.Err)
 				continue
 			}
+			// TODO rate limit
 			result, err := e.scanner.Scan(ctx, r)
 			if err != nil {
 				writeError(ctx, errc, err)

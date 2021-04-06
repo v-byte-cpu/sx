@@ -1,5 +1,3 @@
-//go:generate easyjson -output_filename result_easyjson.go elastic.go
-
 package elastic
 
 import (
@@ -19,7 +17,6 @@ const (
 	defaultDataTimeout = 5 * time.Second
 )
 
-//easyjson:json
 type ScanResult struct {
 	ScanType string                 `json:"scan"`
 	Proto    string                 `json:"proto"`
@@ -34,6 +31,13 @@ func (r *ScanResult) String() string {
 
 func (r *ScanResult) ID() string {
 	return r.Host
+}
+
+func (r *ScanResult) MarshalJSON() ([]byte, error) {
+	// Type definition for the recursive call
+	type JScanResult ScanResult
+	// This works because JScanResult doesn't have a MarshalJSON function associated with it
+	return json.Marshal(JScanResult(*r))
 }
 
 type Scanner struct {

@@ -3,10 +3,19 @@ module github.com/v-byte-cpu/sx
 go 1.15
 
 require (
+	github.com/Microsoft/go-winio v0.4.16 // indirect
+	github.com/containerd/containerd v1.4.4 // indirect
+	github.com/docker/distribution v2.7.1+incompatible // indirect
+	github.com/docker/docker v20.10.5+incompatible // indirect
+	github.com/docker/go-connections v0.4.0 // indirect
+	github.com/docker/go-units v0.4.0 // indirect
 	github.com/golang/mock v1.5.0
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/jinzhu/copier v0.2.8
 	github.com/mailru/easyjson v0.7.7
+	github.com/moby/moby v20.10.5+incompatible // indirect
+	github.com/opencontainers/go-digest v1.0.0 // indirect
+	github.com/opencontainers/image-spec v1.0.1 // indirect
 	github.com/spf13/cobra v1.1.3
 	github.com/stretchr/testify v1.7.0
 	go.uber.org/multierr v1.6.0 // indirect

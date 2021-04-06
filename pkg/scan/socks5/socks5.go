@@ -1,9 +1,8 @@
-//go:generate easyjson -output_filename result_easyjson.go socks5.go
-
 package socks5
 
 import (
 	"context"
+	json "encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -19,7 +18,6 @@ const (
 	defaultDataTimeout = 2 * time.Second
 )
 
-//easyjson:json
 type ScanResult struct {
 	ScanType string `json:"scan"`
 	Version  int    `json:"version"`
@@ -34,6 +32,13 @@ func (r *ScanResult) String() string {
 
 func (r *ScanResult) ID() string {
 	return fmt.Sprintf("%s:%d", r.IP, r.Port)
+}
+
+func (r *ScanResult) MarshalJSON() ([]byte, error) {
+	// Type definition for the recursive call
+	type JScanResult ScanResult
+	// This works because JScanResult doesn't have a MarshalJSON function associated with it
+	return json.Marshal(JScanResult(*r))
 }
 
 type Scanner struct {
