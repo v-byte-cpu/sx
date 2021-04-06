@@ -15,6 +15,7 @@ The goal of this project is to create the fastest network scanner with clean and
   * **Custom TCP scans with any TCP flags**: Send whatever exotic packets you want and get a result with all the TCP flags set in the reply packet
   * **UDP scan**: Scan UDP ports and get full ICMP replies to detect open ports or firewall rules
   * **SOCKS5 scan**: Detect live SOCKS5 proxies by scanning ip range or list of ip/port pairs from a file
+  * **Elasticsearch scan**: Detect open Elasticsearch nodes by pulling out cluster information and all index names
   * **JSON output support**: sx is designed specifically for convenient automatic processing of results
 
 ## Build from source
@@ -349,7 +350,46 @@ sample input file:
 You can also specify a range of ports to scan:
 
 ```
-socks -p 1080-4567 -f ips_file.jsonl
+./sx socks -p 1080-4567 -f ips_file.jsonl
+```
+
+In this case only ip addresses will be taken from the file and the **port** field is no longer necessary.
+
+### Elasticsearch scan
+
+Elasticsearch scan retrieves the cluster information and a list of all indexes along with aliases.
+
+For example, an IP range scan:
+
+```
+./sx elastic -p 9200 10.0.0.1/16
+```
+
+By default the scan uses the http protocol, to use the https protocol specify the `--proto` option:
+
+```
+./sx elastic --proto https -p 9200 10.0.0.1/16
+```
+
+scan ip/port pairs from a file with JSON output:
+
+```
+./sx elastic --json -f ip_ports_file.jsonl 2> /dev/null | tee results.jsonl
+```
+
+Each line of the input file is a json string, which must contain the **ip** and **port** fields.
+
+sample input file:
+
+```
+{"ip":"10.0.1.1","port":9200}
+{"ip":"10.0.2.2","port":9201}
+```
+
+You can also specify a range of ports to scan:
+
+```
+./sx elastic -p 9200-9267 -f ips_file.jsonl
 ```
 
 In this case only ip addresses will be taken from the file and the **port** field is no longer necessary.

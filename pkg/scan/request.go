@@ -202,6 +202,7 @@ func NewFileIPPortGenerator(openFile OpenFileFunc) RequestGenerator {
 	return &fileIPPortGenerator{openFile}
 }
 
+// TODO add meta field
 func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, _ *Range) (<-chan *Request, error) {
 	input, err := rg.openFile()
 	if err != nil {

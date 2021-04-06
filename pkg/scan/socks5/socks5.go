@@ -44,21 +44,21 @@ type Scanner struct {
 // Assert that socks5.Scanner conforms to the scan.Scanner interface
 var _ scan.Scanner = (*Scanner)(nil)
 
-type SocksOption func(*Scanner)
+type ScannerOption func(*Scanner)
 
-func WithDialTimeout(timeout time.Duration) SocksOption {
+func WithDialTimeout(timeout time.Duration) ScannerOption {
 	return func(s *Scanner) {
 		s.dialer.Timeout = timeout
 	}
 }
 
-func WithDataTimeout(timeout time.Duration) SocksOption {
+func WithDataTimeout(timeout time.Duration) ScannerOption {
 	return func(s *Scanner) {
 		s.dataTimeout = timeout
 	}
 }
 
-func NewScanner(opts ...SocksOption) *Scanner {
+func NewScanner(opts ...ScannerOption) *Scanner {
 	s := &Scanner{
 		dialer: &net.Dialer{
 			Timeout: defaultDialTimeout,
