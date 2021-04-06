@@ -25,7 +25,11 @@ issues:
   exclude-rules:
     - linters:
         - gosec
-      text: "G404"
+      text: "G404" # math/rand; used to generate pseudo-random source ports
+    - path: pkg/scan/elastic
+      linters:
+        - gosec
+      text: "G402" # TLS insecure; used in Elasticsearch scan to ignore TLS cert
     - linters:
         - funlen
       path: _test\.go
