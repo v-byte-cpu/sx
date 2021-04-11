@@ -1,4 +1,4 @@
-package udp
+package icmp
 
 import (
 	"context"
@@ -11,20 +11,19 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/icmp"
 )
 
 func TestPacketFiller(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller()
+	filler := NewPacketFiller(
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
@@ -43,114 +42,89 @@ func TestPacketFiller(t *testing.T) {
 	require.Equal(t, net.IPv4(192, 168, 0, 2).To4(), ip.DstIP.To4())
 	require.Equal(t, uint8(64), ip.TTL)
 	require.Equal(t, uint8(5), ip.IHL)
-	// IP header + UDP header length
-	require.Equal(t, uint16(20+8), ip.Length)
-	require.Equal(t, layers.IPProtocolUDP, ip.Protocol)
+	// IP header + ICMP header + payload length
+	require.Equal(t, uint16(20+8+48), ip.Length)
+	require.Equal(t, layers.IPProtocolICMPv4, ip.Protocol)
 	require.Equal(t, layers.IPv4DontFragment, ip.Flags)
 
-	udpLayer := resultPacket.Layer(layers.LayerTypeUDP)
-	require.NotNil(t, udpLayer, "udp layer is empty")
-	udp := udpLayer.(*layers.UDP)
-	require.GreaterOrEqual(t, udp.SrcPort, uint16(32768))
-	require.LessOrEqual(t, udp.SrcPort, uint16(60999))
-	require.Equal(t, uint16(4567), uint16(udp.DstPort))
-	require.Equal(t, []byte{}, udp.Payload)
+	icmpLayer := resultPacket.Layer(layers.LayerTypeICMPv4)
+	require.NotNil(t, icmpLayer, "icmp layer is empty")
+	icmp := icmpLayer.(*layers.ICMPv4)
+	require.Equal(t, uint8(layers.ICMPv4TypeTimestampRequest), icmp.TypeCode.Type())
+	require.Equal(t, uint8(1), icmp.TypeCode.Code())
+	require.Equal(t, 48, len(icmp.Payload))
 }
 
 func TestPacketFillerPayload(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller(WithPayload([]byte("abc")))
+	filler := NewPacketFiller(WithPayload([]byte("abc")),
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
 	resultPacket := gopacket.NewPacket(packet.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 
-	ethLayer := resultPacket.Layer(layers.LayerTypeEthernet)
-	require.NotNil(t, ethLayer, "ethernet layer is empty")
-	eth := ethLayer.(*layers.Ethernet)
-	require.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, eth.SrcMAC)
-	require.Equal(t, net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15}, eth.DstMAC)
-
 	ipLayer := resultPacket.Layer(layers.LayerTypeIPv4)
 	require.NotNil(t, ipLayer, "ip layer is empty")
 	ip := ipLayer.(*layers.IPv4)
-	require.Equal(t, net.IPv4(192, 168, 0, 3).To4(), ip.SrcIP.To4())
-	require.Equal(t, net.IPv4(192, 168, 0, 2).To4(), ip.DstIP.To4())
-	require.Equal(t, uint8(64), ip.TTL)
 	require.Equal(t, uint8(5), ip.IHL)
+	require.Equal(t, uint8(64), ip.TTL)
 
-	udpLayer := resultPacket.Layer(layers.LayerTypeUDP)
-	require.NotNil(t, udpLayer, "udp layer is empty")
-	udp := udpLayer.(*layers.UDP)
-	require.Equal(t, []byte("abc"), udp.Payload)
+	icmpLayer := resultPacket.Layer(layers.LayerTypeICMPv4)
+	require.NotNil(t, icmpLayer, "icmp layer is empty")
+	icmp := icmpLayer.(*layers.ICMPv4)
+	require.Equal(t, []byte("abc"), icmp.Payload)
 }
 
 func TestPacketFillerTTL(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller(WithTTL(37))
+	filler := NewPacketFiller(WithTTL(37),
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
 	resultPacket := gopacket.NewPacket(packet.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 
-	ethLayer := resultPacket.Layer(layers.LayerTypeEthernet)
-	require.NotNil(t, ethLayer, "ethernet layer is empty")
-	eth := ethLayer.(*layers.Ethernet)
-	require.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, eth.SrcMAC)
-	require.Equal(t, net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15}, eth.DstMAC)
-
 	ipLayer := resultPacket.Layer(layers.LayerTypeIPv4)
 	require.NotNil(t, ipLayer, "ip layer is empty")
 	ip := ipLayer.(*layers.IPv4)
-	require.Equal(t, net.IPv4(192, 168, 0, 3).To4(), ip.SrcIP.To4())
-	require.Equal(t, net.IPv4(192, 168, 0, 2).To4(), ip.DstIP.To4())
-	require.Equal(t, uint8(37), ip.TTL)
 	require.Equal(t, uint8(5), ip.IHL)
+	require.Equal(t, uint8(37), ip.TTL)
 }
 
 func TestPacketFillerIPTotalLength(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller(WithIPTotalLength(57))
+	filler := NewPacketFiller(WithIPTotalLength(57),
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1), WithPayload([]byte("abc")))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
 	resultPacket := gopacket.NewPacket(packet.Bytes(), layers.LayerTypeEthernet, gopacket.Default)
 
-	ethLayer := resultPacket.Layer(layers.LayerTypeEthernet)
-	require.NotNil(t, ethLayer, "ethernet layer is empty")
-	eth := ethLayer.(*layers.Ethernet)
-	require.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, eth.SrcMAC)
-	require.Equal(t, net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15}, eth.DstMAC)
-
 	ipLayer := resultPacket.Layer(layers.LayerTypeIPv4)
 	require.NotNil(t, ipLayer, "ip layer is empty")
 	ip := ipLayer.(*layers.IPv4)
-	require.Equal(t, net.IPv4(192, 168, 0, 3).To4(), ip.SrcIP.To4())
-	require.Equal(t, net.IPv4(192, 168, 0, 2).To4(), ip.DstIP.To4())
 	require.Equal(t, uint8(5), ip.IHL)
 	require.Equal(t, uint16(57), ip.Length)
 }
@@ -158,14 +132,14 @@ func TestPacketFillerIPTotalLength(t *testing.T) {
 func TestPacketFillerIPProtocol(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller(WithIPProtocol(37))
+	filler := NewPacketFiller(WithIPProtocol(37),
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
@@ -180,14 +154,14 @@ func TestPacketFillerIPProtocol(t *testing.T) {
 func TestPacketFillerIPFlags(t *testing.T) {
 	t.Parallel()
 
-	filler := NewPacketFiller(WithIPFlags(uint8(layers.IPv4DontFragment | layers.IPv4MoreFragments)))
+	filler := NewPacketFiller(WithIPFlags(uint8(layers.IPv4DontFragment|layers.IPv4MoreFragments)),
+		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:   net.IPv4(192, 168, 0, 2).To4(),
-		SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		DstPort: 4567,
+		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
+		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
 	require.NoError(t, err)
 
@@ -210,7 +184,7 @@ func TestProcessPacketData(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		results := scan.NewResultChan(ctx, 1000)
-		sm := NewScanMethod(nil, results)
+		p := NewPacketProcessor(ScanType, results)
 
 		// generate packet data
 		packet := gopacket.NewSerializeBuffer()
@@ -230,34 +204,35 @@ func TestProcessPacketData(t *testing.T) {
 			DstIP:    net.IPv4(192, 168, 0, 3).To4(),
 		}
 
-		icmpLayer := &layers.ICMPv4{
+		icmp := &layers.ICMPv4{
 			TypeCode: layers.CreateICMPv4TypeCode(
-				layers.ICMPv4TypeDestinationUnreachable, layers.ICMPv4CodePort),
+				layers.ICMPv4TypeDestinationUnreachable, layers.ICMPv4CodeHost),
 		}
 
 		opt := gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		}
-		err := gopacket.SerializeLayers(packet, opt, eth, ip, icmpLayer)
+		err := gopacket.SerializeLayers(packet, opt, eth, ip, icmp)
 		require.NoError(t, err)
 
-		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
+		err = p.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
 		require.NoError(t, err)
 
-		result, ok := <-sm.Results()
+		result, ok := <-p.Results()
 		if !ok {
 			require.FailNow(t, "results chan is empty")
 		}
-		icmpResult := result.(*icmp.ScanResult)
+		icmpResult := result.(*ScanResult)
 		assert.Equal(t, ScanType, icmpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), icmpResult.IP)
+		assert.Equal(t, uint8(64), icmpResult.TTL)
 		require.NotNil(t, icmpResult.ICMP)
 		assert.Equal(t, uint8(layers.ICMPv4TypeDestinationUnreachable), icmpResult.ICMP.Type)
-		assert.Equal(t, uint8(layers.ICMPv4CodePort), icmpResult.ICMP.Code)
+		assert.Equal(t, uint8(layers.ICMPv4CodeHost), icmpResult.ICMP.Code)
 
 		cancel()
-		_, ok = <-sm.Results()
+		_, ok = <-p.Results()
 		require.False(t, ok, "results chan is not closed")
 	}()
 	select {
