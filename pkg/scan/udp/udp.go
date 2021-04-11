@@ -3,31 +3,16 @@
 package udp
 
 import (
-	"fmt"
 	"math/rand"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
+	"github.com/v-byte-cpu/sx/pkg/packet"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/icmp"
 )
 
 const ScanType = "udp"
-
-//easyjson:json
-type ScanResult struct {
-	ScanType string         `json:"scan"`
-	IP       string         `json:"ip"`
-	ICMP     *icmp.Response `json:"icmp"`
-}
-
-func (r *ScanResult) String() string {
-	return fmt.Sprintf("%-20s %-5d %-5d", r.IP, r.ICMP.Type, r.ICMP.Code)
-}
-
-func (r *ScanResult) ID() string {
-	return r.IP
-}
 
 // ScanMethod exploits RFC1122 Section 4.1.3.1:
 // If a datagram arrives addressed to a UDP port for which
@@ -35,62 +20,83 @@ func (r *ScanResult) ID() string {
 // Port Unreachable message.
 type ScanMethod struct {
 	scan.PacketSource
-	parser  *gopacket.DecodingLayerParser
-	results scan.ResultChan
-
-	rcvDecoded []gopacket.LayerType
-	rcvEth     layers.Ethernet
-	rcvIP      layers.IPv4
-	rcvICMP    layers.ICMPv4
+	packet.Processor
+	scan.Resulter
 }
 
-// Assert that tcp.ScanMethod conforms to the scan.PacketMethod interface
+// Assert that udp.ScanMethod conforms to the scan.PacketMethod interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
 
 func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
-	sm := &ScanMethod{
+	pp := icmp.NewPacketProcessor(ScanType, results)
+	return &ScanMethod{
 		PacketSource: psrc,
-		results:      results,
+		Processor:    pp,
+		Resulter:     pp,
 	}
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvIP, &sm.rcvICMP)
-	parser.IgnoreUnsupported = true
-	sm.parser = parser
-	return sm
 }
 
-func (s *ScanMethod) Results() <-chan scan.Result {
-	return s.results.Chan()
+type PacketFiller struct {
+	ttl     uint8
+	length  uint16
+	proto   layers.IPProtocol
+	flags   layers.IPv4Flag
+	payload []byte
 }
-
-func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
-	if err := s.parser.DecodeLayers(data, &s.rcvDecoded); err != nil {
-		return err
-	}
-	if len(s.rcvDecoded) != 3 {
-		return nil
-	}
-
-	s.results.Put(&ScanResult{
-		ScanType: ScanType,
-		IP:       s.rcvIP.SrcIP.String(),
-		ICMP: &icmp.Response{
-			Type: s.rcvICMP.TypeCode.Type(),
-			Code: s.rcvICMP.TypeCode.Code(),
-		},
-	})
-	return nil
-}
-
-type PacketFiller struct{}
 
 // Assert that udp.PacketFiller conforms to the scan.PacketFiller interface
 var _ scan.PacketFiller = (*PacketFiller)(nil)
 
-func NewPacketFiller() *PacketFiller {
-	return &PacketFiller{}
+type PacketFillerOption func(f *PacketFiller)
+
+func WithTTL(ttl uint8) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.ttl = ttl
+	}
 }
 
-func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
+func WithIPTotalLength(length uint16) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.length = length
+	}
+}
+
+func WithIPProtocol(proto uint8) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.proto = layers.IPProtocol(proto)
+	}
+}
+
+func WithIPFlags(flags uint8) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.flags = layers.IPv4Flag(flags)
+	}
+}
+
+func WithPayload(payload []byte) PacketFillerOption {
+	return func(f *PacketFiller) {
+		data := make([]byte, len(payload))
+		copy(data, payload)
+		f.payload = data
+	}
+}
+
+// TODO source-route option
+// TODO record-route option
+func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
+	f := &PacketFiller{
+		// typical TTL value for Linux
+		ttl:   64,
+		proto: layers.IPProtocolUDP,
+		flags: layers.IPv4DontFragment,
+	}
+	for _, o := range opts {
+		o(f)
+	}
+	return f
+}
+
+func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
 	eth := &layers.Ethernet{
 		SrcMAC:       r.SrcMAC,
 		DstMAC:       r.DstMAC,
@@ -102,10 +108,13 @@ func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err
 		// actually Linux kernel uses more complicated algorithm for ip id generation,
 		// see __ip_select_ident function in net/ipv4/route.c
 		// but we don't care and just spoof it ;)
-		Id:       uint16(1 + rand.Intn(65535)),
-		Flags:    layers.IPv4DontFragment,
-		TTL:      64,
-		Protocol: layers.IPProtocolUDP,
+		Id:    uint16(1 + rand.Intn(65535)),
+		Flags: f.flags,
+		// Typical 20 bytes IP header length
+		IHL:      5,
+		TTL:      f.ttl,
+		Length:   f.length,
+		Protocol: f.proto,
 		SrcIP:    r.SrcIP,
 		DstIP:    r.DstIP,
 	}
@@ -121,6 +130,9 @@ func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err
 		return err
 	}
 
-	opt := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
-	return gopacket.SerializeLayers(packet, opt, eth, ip, udp)
+	opt := gopacket.SerializeOptions{ComputeChecksums: true}
+	if ip.Length == 0 {
+		opt.FixLengths = true
+	}
+	return gopacket.SerializeLayers(packet, opt, eth, ip, udp, gopacket.Payload(f.payload))
 }

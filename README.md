@@ -10,6 +10,7 @@ The goal of this project is to create the fastest network scanner with clean and
 ## Features
 
   * **ARP scan**: Scan your local networks to detect live devices
+  * **ICMP scan**: Use advanced ICMP scanning techniques to detect live hosts and firewall rules
   * **TCP SYN scan**: Traditional half-open scan to find open TCP ports
   * **TCP FIN / NULL / Xmas scans**: Scan techniques to bypass some firewall rules
   * **Custom TCP scans with any TCP flags**: Send whatever exotic packets you want and get a result with all the TCP flags set in the reply packet
@@ -387,6 +388,17 @@ In this case only ip addresses will be taken from the file and the **port** fiel
 ```
 ./sx help
 ```
+
+## Reference
+
+  * **Network Security Assessment: Know Your Network 1st Edition** by Chris McNab
+  * **ICMP Usage in Scanning - The Complete Know-How** by Ofir Arkin
+  * [Transmission Control Protocol ( rfc793 )](https://tools.ietf.org/rfc/rfc793.txt)
+  * [User Datagram Protocol ( rfc768 )](https://tools.ietf.org/rfc/rfc768.txt)
+  * [Requirements for Internet Hosts -- Communication Layers ( rfc1122 )](https://tools.ietf.org/rfc/rfc1122.txt)
+  * [SOCKS Protocol Version 5 ( rfc1928 )](https://tools.ietf.org/rfc/rfc1928.txt)
+  * [Internet Control Message Protocol ( rfc792 )](https://tools.ietf.org/rfc/rfc792.txt)
+
 
 ## License
 

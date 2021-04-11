@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/routing"
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
@@ -59,6 +60,32 @@ var rootCmd = &cobra.Command{
 				return
 			}
 		}
+		var ttl uint64
+		if len(cliIPTTLFlag) > 0 {
+			if ttl, err = strconv.ParseUint(cliIPTTLFlag, 10, 8); err != nil {
+				return
+			}
+			cliTTL = uint8(ttl)
+		}
+		var ipLen uint64
+		if len(cliIPTotalLenFlag) > 0 {
+			if ipLen, err = strconv.ParseUint(cliIPTotalLenFlag, 10, 16); err != nil {
+				return
+			}
+			cliIPTotalLen = uint16(ipLen)
+		}
+		var ipProto uint64
+		if len(cliIPProtocolFlag) > 0 {
+			if ipProto, err = strconv.ParseUint(cliIPProtocolFlag, 10, 8); err != nil {
+				return
+			}
+			cliIPProtocol = uint8(ipProto)
+		}
+		if len(cliIPFlagsFlag) > 0 {
+			if cliIPFlags, err = parseIPFlags(cliIPFlagsFlag); err != nil {
+				return
+			}
+		}
 		return
 	},
 }
@@ -74,6 +101,10 @@ var (
 	cliARPCacheFileFlag string
 	cliIPPortFileFlag   string
 	cliProtoFlag        string
+	cliIPTTLFlag        string
+	cliIPTotalLenFlag   string
+	cliIPProtocolFlag   string
+	cliIPFlagsFlag      string
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -83,6 +114,10 @@ var (
 	cliRateCount  int
 	cliRateWindow time.Duration
 	cliExitDelay  = 300 * time.Millisecond
+	cliIPTotalLen uint16
+	cliIPProtocol uint8
+	cliIPFlags    uint8
+	cliTTL        uint8
 )
 
 const (
@@ -96,6 +131,7 @@ var (
 	errSrcInterface = errors.New("invalid source interface")
 	errRateLimit    = errors.New("invalid ratelimit")
 	errStdin        = errors.New("stdin is from a terminal")
+	errIPFlags      = errors.New("invalid ip flags")
 )
 
 func init() {
@@ -269,6 +305,34 @@ func parseRateLimit(rateLimit string) (rateCount int, rateWindow time.Duration, 
 	}
 	if rateWindow, err = time.ParseDuration(win); err != nil || rateWindow < 0 {
 		return 0, 0, errRateLimit
+	}
+	return
+}
+
+func parsePacketPayload(payload string) (result []byte, err error) {
+	var unquoted string
+	if unquoted, err = strconv.Unquote(`"` + payload + `"`); err != nil {
+		return
+	}
+	return []byte(unquoted), nil
+}
+
+func parseIPFlags(inputFlags string) (result uint8, err error) {
+	if len(inputFlags) == 0 {
+		return
+	}
+	flags := strings.Split(strings.ToLower(inputFlags), ",")
+	for _, flag := range flags {
+		switch flag {
+		case "df":
+			result |= uint8(layers.IPv4DontFragment)
+		case "evil":
+			result |= uint8(layers.IPv4EvilBit)
+		case "mf":
+			result |= uint8(layers.IPv4MoreFragments)
+		default:
+			return 0, errIPFlags
+		}
 	}
 	return
 }
