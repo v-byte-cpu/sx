@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"errors"
 	"os"
 	"os/signal"
 	"strings"
@@ -19,12 +18,6 @@ var tcpnullCmd = &cobra.Command{
 	Use:     "null [flags] subnet",
 	Example: strings.Join([]string{"tcp null -p 22 192.168.0.1/24", "tcp null -p 22-4567 10.0.0.1"}, "\n"),
 	Short:   "Perform TCP NULL scan",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
-		}
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
@@ -32,7 +25,7 @@ var tcpnullCmd = &cobra.Command{
 		scanName := tcp.NULLScanType
 
 		var conf *scanConfig
-		if conf, err = parseScanConfig(scanName, args[0]); err != nil {
+		if conf, err = parseScanConfig(scanName, cliDstSubnet); err != nil {
 			return
 		}
 

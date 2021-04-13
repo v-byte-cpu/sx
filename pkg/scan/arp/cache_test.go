@@ -113,7 +113,7 @@ func TestCacheRequestGenerator(t *testing.T) {
 
 	tests := []struct {
 		name             string
-		gatewayIP        net.IP
+		gatewayMAC       net.HardwareAddr
 		ipMacPairs       []*ipMacPair
 		requests         []*scan.Request
 		expectedRequests []*scan.Request
@@ -164,14 +164,8 @@ func TestCacheRequestGenerator(t *testing.T) {
 			},
 		},
 		{
-			name:      "oneRequestWithGatewayIP",
-			gatewayIP: net.IPv4(192, 168, 0, 1).To4(),
-			ipMacPairs: []*ipMacPair{
-				{
-					ip:  net.IPv4(192, 168, 0, 1).To4(),
-					mac: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-				},
-			},
+			name:       "oneRequestWithGatewayMAC",
+			gatewayMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 			requests: []*scan.Request{
 				{DstIP: net.IPv4(10, 168, 0, 2).To4()},
 			},
@@ -183,12 +177,30 @@ func TestCacheRequestGenerator(t *testing.T) {
 			},
 		},
 		{
-			name:      "twoRequestsWithGatewayIP",
-			gatewayIP: net.IPv4(192, 168, 0, 1).To4(),
+			name:       "twoRequestsWithGatewayMAC",
+			gatewayMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+			requests: []*scan.Request{
+				{DstIP: net.IPv4(10, 168, 0, 2).To4()},
+				{DstIP: net.IPv4(10, 168, 0, 3).To4()},
+			},
+			expectedRequests: []*scan.Request{
+				{
+					DstIP:  net.IPv4(10, 168, 0, 2).To4(),
+					DstMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+				},
+				{
+					DstIP:  net.IPv4(10, 168, 0, 3).To4(),
+					DstMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+				},
+			},
+		},
+		{
+			name:       "twoRequestsWithCacheAndGatewayMAC",
+			gatewayMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 			ipMacPairs: []*ipMacPair{
 				{
-					ip:  net.IPv4(192, 168, 0, 1).To4(),
-					mac: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+					ip:  net.IPv4(10, 168, 0, 2).To4(),
+					mac: net.HardwareAddr{0x2, 0x3, 0x4, 0x5, 0x6, 0x7},
 				},
 			},
 			requests: []*scan.Request{
@@ -198,7 +210,7 @@ func TestCacheRequestGenerator(t *testing.T) {
 			expectedRequests: []*scan.Request{
 				{
 					DstIP:  net.IPv4(10, 168, 0, 2).To4(),
-					DstMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+					DstMAC: net.HardwareAddr{0x2, 0x3, 0x4, 0x5, 0x6, 0x7},
 				},
 				{
 					DstIP:  net.IPv4(10, 168, 0, 3).To4(),
@@ -249,7 +261,7 @@ func TestCacheRequestGenerator(t *testing.T) {
 				scanRange := &scan.Range{}
 				reqgen.EXPECT().GenerateRequests(ctx, scanRange).Return(requestsCh, nil)
 
-				cachegen := NewCacheRequestGenerator(reqgen, tt.gatewayIP, cache)
+				cachegen := NewCacheRequestGenerator(reqgen, tt.gatewayMAC, cache)
 				results, err := cachegen.GenerateRequests(ctx, scanRange)
 				require.NoError(t, err)
 

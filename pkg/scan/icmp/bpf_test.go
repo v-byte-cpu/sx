@@ -18,7 +18,7 @@ func TestBPFFilter(t *testing.T) {
 	}{
 		{
 			name:           "EmptySubnet",
-			expectedFilter: "icmp",
+			expectedFilter: "icmp and icmp[0]!=8",
 			scanRange:      &scan.Range{},
 		},
 		{
@@ -29,7 +29,7 @@ func TestBPFFilter(t *testing.T) {
 					Mask: net.CIDRMask(24, 32),
 				},
 			},
-			expectedFilter: "icmp and ip src net 192.168.0.0/24",
+			expectedFilter: "icmp and icmp[0]!=8 and ip src net 192.168.0.0/24",
 		},
 	}
 

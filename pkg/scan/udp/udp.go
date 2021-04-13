@@ -81,8 +81,6 @@ func WithPayload(payload []byte) PacketFillerOption {
 	}
 }
 
-// TODO source-route option
-// TODO record-route option
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	f := &PacketFiller{
 		// typical TTL value for Linux

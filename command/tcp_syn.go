@@ -2,7 +2,7 @@ package command
 
 import (
 	"context"
-	"errors"
+	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -20,24 +20,18 @@ var tcpsynCmd = &cobra.Command{
 	Use:     "syn [flags] subnet",
 	Example: strings.Join([]string{"tcp syn -p 22 192.168.0.1/24", "tcp syn -p 22-4567 10.0.0.1"}, "\n"),
 	Short:   "Perform TCP SYN scan",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
-		}
-		return nil
-	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
-		return startTCPSYNScan(ctx, args[0])
+		return startTCPSYNScan(ctx, cliDstSubnet)
 	},
 }
 
-func startTCPSYNScan(ctx context.Context, subnet string) (err error) {
+func startTCPSYNScan(ctx context.Context, dstSubnet *net.IPNet) (err error) {
 	scanName := tcp.SYNScanType
 
 	var conf *scanConfig
-	if conf, err = parseScanConfig(scanName, subnet); err != nil {
+	if conf, err = parseScanConfig(scanName, dstSubnet); err != nil {
 		return
 	}
 
@@ -53,8 +47,7 @@ func startTCPSYNScan(ctx context.Context, subnet string) (err error) {
 
 	return startPacketScanEngine(ctx, newPacketScanConfig(
 		withPacketScanMethod(m),
-		// TODO SYN,ACK filter
-		withPacketBPFFilter(tcp.BPFFilter),
+		withPacketBPFFilter(tcp.SYNACKBPFFilter),
 		withPacketEngineConfig(newEngineConfig(
 			withLogger(conf.logger),
 			withScanRange(conf.scanRange),

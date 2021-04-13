@@ -18,7 +18,6 @@ type PortRange struct {
 type Range struct {
 	Interface *net.Interface
 	DstSubnet *net.IPNet
-	SrcSubnet *net.IPNet
 	SrcIP     net.IP
 	SrcMAC    net.HardwareAddr
 	Ports     []*PortRange

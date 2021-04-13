@@ -2,9 +2,8 @@ package ip
 
 import (
 	"errors"
+	"fmt"
 	"net"
-
-	"github.com/google/gopacket/routing"
 )
 
 var ErrInvalidAddr = errors.New("invalid IP subnet/host")
@@ -37,66 +36,35 @@ func ParseIPNet(subnet string) (*net.IPNet, error) {
 	return &net.IPNet{IP: ipAddr.To4(), Mask: net.CIDRMask(32, 32)}, nil
 }
 
-func GetSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP *net.IPNet, err error) {
-	if iface, ifaceIP, err = GetLocalSubnetInterface(dstSubnet); err != nil {
+func GetInterfaceIP(iface *net.Interface) (ifaceIP net.IP, err error) {
+	var addrs []net.Addr
+	if addrs, err = iface.Addrs(); err != nil || len(addrs) == 0 {
 		return
 	}
-	if iface != nil && ifaceIP != nil {
+	if ipnet, ok := addrs[0].(*net.IPNet); ok {
+		return ipnet.IP, nil
+	}
+	return nil, fmt.Errorf("invalid IP address: %v", addrs[0])
+}
+
+func GetLocalSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {
+	var ifaces []net.Interface
+	if ifaces, err = net.Interfaces(); err != nil {
 		return
 	}
-	// fallback to remote net (routing)
-	var router routing.Router
-	if router, err = routing.New(); err != nil {
-		return
+	for _, v := range ifaces {
+		viface := v
+		if ifaceIP, err = GetLocalSubnetInterfaceIP(&viface, dstSubnet); err != nil {
+			return
+		}
+		if ifaceIP != nil {
+			return &viface, ifaceIP, nil
+		}
 	}
-	var srcIP net.IP
-	if iface, _, srcIP, err = router.Route(dstSubnet.IP); err != nil {
-		return
-	}
-	srcNet := &net.IPNet{IP: srcIP, Mask: net.CIDRMask(32, 32)}
-	ifaceIP, err = GetLocalSubnetInterfaceIP(iface, srcNet)
 	return
 }
 
-func GetSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (ifaceIP *net.IPNet, err error) {
-	if ifaceIP, err = GetLocalSubnetInterfaceIP(iface, dstSubnet); err != nil {
-		return
-	}
-	if ifaceIP != nil {
-		return
-	}
-	// fallback to remote net (routing)
-	var router routing.Router
-	if router, err = routing.New(); err != nil {
-		return
-	}
-	var srcIP net.IP
-	if _, _, srcIP, err = router.RouteWithSrc(iface.HardwareAddr, nil, dstSubnet.IP); err != nil {
-		return
-	}
-	srcNet := &net.IPNet{IP: srcIP, Mask: net.CIDRMask(32, 32)}
-	return GetLocalSubnetInterfaceIP(iface, srcNet)
-}
-
-func GetLocalSubnetInterface(dstSubnet *net.IPNet) (*net.Interface, *net.IPNet, error) {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return nil, nil, err
-	}
-	for _, iface := range ifaces {
-		iface := iface
-		ifaceIP, err := GetLocalSubnetInterfaceIP(&iface, dstSubnet)
-		if err != nil {
-			return nil, nil, err
-		}
-		if ifaceIP != nil {
-			return &iface, ifaceIP, nil
-		}
-	}
-	return nil, nil, nil
-}
-
-func GetLocalSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (*net.IPNet, error) {
+func GetLocalSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (net.IP, error) {
 	dstSubnetIP := dstSubnet.IP.Mask(dstSubnet.Mask)
 	addrs, err := iface.Addrs()
 	if err != nil {
@@ -104,7 +72,7 @@ func GetLocalSubnetInterfaceIP(iface *net.Interface, dstSubnet *net.IPNet) (*net
 	}
 	for _, addr := range addrs {
 		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.Contains(dstSubnetIP) {
-			return ipnet, nil
+			return ipnet.IP, nil
 		}
 	}
 	return nil, nil

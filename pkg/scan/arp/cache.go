@@ -64,16 +64,13 @@ type cacheReqGenerator struct {
 	getMAC func(net.IP) net.HardwareAddr
 }
 
-func NewCacheRequestGenerator(reqgen scan.RequestGenerator, gatewayIP net.IP, cache *Cache) scan.RequestGenerator {
+func NewCacheRequestGenerator(reqgen scan.RequestGenerator, gatewayMAC net.HardwareAddr, cache *Cache) scan.RequestGenerator {
 	result := &cacheReqGenerator{reqgen: reqgen}
-	if gatewayIP == nil {
-		result.getMAC = func(ip net.IP) net.HardwareAddr {
-			return cache.Get(ip)
+	result.getMAC = func(ip net.IP) net.HardwareAddr {
+		if mac := cache.Get(ip); mac != nil {
+			return mac
 		}
-	} else {
-		result.getMAC = func(net.IP) net.HardwareAddr {
-			return cache.Get(gatewayIP)
-		}
+		return gatewayMAC
 	}
 	return result
 }

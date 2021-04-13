@@ -2,7 +2,7 @@ package command
 
 import (
 	"context"
-	"errors"
+	"io"
 	"os"
 	"os/signal"
 	"runtime"
@@ -26,6 +26,8 @@ var (
 )
 
 func init() {
+	addPacketScanOptions(icmpCmd)
+	icmpCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with IPs to scan")
 	icmpCmd.Flags().StringVar(&cliIPTTLFlag, "ttl", "",
 		strings.Join([]string{"set IP TTL field of generated packet", "64 by default"}, "\n"))
 	icmpCmd.Flags().StringVar(&cliIPTotalLenFlag, "iplen", "",
@@ -56,8 +58,8 @@ var icmpCmd = &cobra.Command{
 		`icmp --type 13 --code 0 --payload '\x01\x02\x03' 10.0.0.1`}, "\n"),
 	Short: "Perform ICMP scan",
 	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
+		if cliDstSubnet, err = parseDstSubnet(args); err != nil {
+			return
 		}
 		var icmpType uint64
 		if len(cliICMPTypeFlag) > 0 {
@@ -85,7 +87,7 @@ var icmpCmd = &cobra.Command{
 		defer cancel()
 
 		var conf *scanConfig
-		if conf, err = parseScanConfig(icmp.ScanType, args[0]); err != nil {
+		if conf, err = parseScanConfig(icmp.ScanType, cliDstSubnet); err != nil {
 			return
 		}
 
@@ -103,8 +105,14 @@ var icmpCmd = &cobra.Command{
 }
 
 func newICMPScanMethod(ctx context.Context, conf *scanConfig) *icmp.ScanMethod {
+	ipgen := scan.NewIPGenerator()
+	if len(cliIPPortFileFlag) > 0 {
+		ipgen = scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
+			return os.Open(cliIPPortFileFlag)
+		})
+	}
 	reqgen := arp.NewCacheRequestGenerator(
-		scan.NewIPRequestGenerator(scan.NewIPGenerator()), conf.gatewayIP, conf.cache)
+		scan.NewIPRequestGenerator(ipgen), conf.gatewayMAC, conf.cache)
 	pktgen := scan.NewPacketMultiGenerator(icmp.NewPacketFiller(getICMPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
