@@ -2,8 +2,6 @@ package command
 
 import (
 	"context"
-	"errors"
-	golog "log"
 	"os"
 	"os/signal"
 	"runtime"
@@ -23,6 +21,8 @@ var (
 )
 
 func init() {
+	addPacketScanOptions(udpCmd)
+	udpCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	udpCmd.Flags().StringVar(&cliIPTTLFlag, "ttl", "",
 		strings.Join([]string{"set IP TTL field of generated packet", "64 by default"}, "\n"))
 	udpCmd.Flags().StringVar(&cliIPTotalLenFlag, "iplen", "",
@@ -33,9 +33,6 @@ func init() {
 		strings.Join([]string{"set IP Flags field of generated packet", "DF by default"}, "\n"))
 
 	udpCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
-	if err := udpCmd.MarkFlagRequired("ports"); err != nil {
-		golog.Fatalln(err)
-	}
 	udpCmd.Flags().StringVar(&cliUDPPayloadFlag, "payload", "",
 		strings.Join([]string{"set byte payload of generated packet", "0 bytes by default"}, "\n"))
 
@@ -54,13 +51,11 @@ var udpCmd = &cobra.Command{
 		`udp --payload '\x01\x02\x03' -p 53 192.168.0.1/24`}, "\n"),
 	Short: "Perform UDP scan",
 	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
+		if cliDstSubnet, err = parseDstSubnet(args); err != nil {
+			return
 		}
 		if len(cliUDPPayloadFlag) > 0 {
-			if cliUDPPayload, err = parsePacketPayload(cliUDPPayloadFlag); err != nil {
-				return
-			}
+			cliUDPPayload, err = parsePacketPayload(cliUDPPayloadFlag)
 		}
 		return
 	},
@@ -69,7 +64,7 @@ var udpCmd = &cobra.Command{
 		defer cancel()
 
 		var conf *scanConfig
-		if conf, err = parseScanConfig(udp.ScanType, args[0]); err != nil {
+		if conf, err = parseScanConfig(udp.ScanType, cliDstSubnet); err != nil {
 			return
 		}
 
@@ -87,10 +82,7 @@ var udpCmd = &cobra.Command{
 }
 
 func newUDPScanMethod(ctx context.Context, conf *scanConfig) *udp.ScanMethod {
-	portgen := scan.NewPortGenerator()
-	ipgen := scan.NewIPGenerator()
-	reqgen := arp.NewCacheRequestGenerator(
-		scan.NewIPPortGenerator(ipgen, portgen), conf.gatewayIP, conf.cache)
+	reqgen := arp.NewCacheRequestGenerator(newIPPortGenerator(), conf.gatewayMAC, conf.cache)
 	pktgen := scan.NewPacketMultiGenerator(udp.NewPacketFiller(getUDPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)

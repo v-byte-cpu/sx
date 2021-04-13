@@ -11,6 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
+	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
@@ -21,6 +22,7 @@ var (
 )
 
 func init() {
+	addPacketScanOptions(arpCmd, withoutGatewayMAC())
 	arpCmd.Flags().StringVar(&cliARPLiveTimeoutFlag, "live", "", "enable live mode")
 	rootCmd.AddCommand(arpCmd)
 }
@@ -29,21 +31,21 @@ var arpCmd = &cobra.Command{
 	Use:     "arp [flags] subnet",
 	Example: strings.Join([]string{"arp 192.168.0.1/24", "arp 10.0.0.1"}, "\n"),
 	Short:   "Perform ARP scan",
-	Args: func(cmd *cobra.Command, args []string) error {
+	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(cliARPLiveTimeoutFlag) > 0 {
+			if cliARPLiveTimeout, err = time.ParseDuration(cliARPLiveTimeoutFlag); err != nil {
+				return
+			}
+		}
 		if len(args) != 1 {
 			return errors.New("requires one ip subnet argument")
 		}
-		return nil
-	},
-	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(cliARPLiveTimeoutFlag) > 0 {
-			cliARPLiveTimeout, err = time.ParseDuration(cliARPLiveTimeoutFlag)
-		}
+		cliDstSubnet, err = ip.ParseIPNet(args[0])
 		return
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		var r *scan.Range
-		if r, err = parseScanRange(args[0]); err != nil {
+		if r, err = getScanRange(cliDstSubnet); err != nil {
 			return err
 		}
 

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/routing"
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
 	"github.com/v-byte-cpu/sx/pkg/ip"
@@ -42,6 +41,11 @@ var rootCmd = &cobra.Command{
 		}
 		if len(cliSrcMACFlag) > 0 {
 			if cliSrcMAC, err = net.ParseMAC(cliSrcMACFlag); err != nil {
+				return
+			}
+		}
+		if len(cliGatewayMACFlag) > 0 {
+			if cliGatewayMAC, err = net.ParseMAC(cliGatewayMACFlag); err != nil {
 				return
 			}
 		}
@@ -95,6 +99,7 @@ var (
 	cliInterfaceFlag    string
 	cliSrcIPFlag        string
 	cliSrcMACFlag       string
+	cliGatewayMACFlag   string
 	cliPortsFlag        string
 	cliRateLimitFlag    string
 	cliExitDelayFlag    string
@@ -109,6 +114,7 @@ var (
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
 	cliSrcMAC     net.HardwareAddr
+	cliGatewayMAC net.HardwareAddr
 	cliPortRanges []*scan.PortRange
 	cliDstSubnet  *net.IPNet
 	cliRateCount  int
@@ -136,16 +142,38 @@ var (
 
 func init() {
 	rootCmd.PersistentFlags().BoolVar(&cliJSONFlag, "json", false, "enable JSON output")
-	rootCmd.PersistentFlags().StringVarP(&cliInterfaceFlag, "iface", "i", "", "set interface to send/receive packets")
-	rootCmd.PersistentFlags().StringVar(&cliSrcIPFlag, "srcip", "", "set source IP address for generated packets")
-	rootCmd.PersistentFlags().StringVar(&cliSrcMACFlag, "srcmac", "", "set source MAC address for generated packets")
-	rootCmd.PersistentFlags().StringVarP(&cliRateLimitFlag, "rate", "r", "",
+}
+
+type cliPacketScanConfig struct {
+	gatewayMAC bool
+}
+
+type cliPacketScanOption func(c *cliPacketScanConfig)
+
+func withoutGatewayMAC() cliPacketScanOption {
+	return func(c *cliPacketScanConfig) {
+		c.gatewayMAC = false
+	}
+}
+
+func addPacketScanOptions(cmd *cobra.Command, opts ...cliPacketScanOption) {
+	conf := &cliPacketScanConfig{gatewayMAC: true}
+	for _, o := range opts {
+		o(conf)
+	}
+	cmd.PersistentFlags().StringVarP(&cliInterfaceFlag, "iface", "i", "", "set interface to send/receive packets")
+	cmd.PersistentFlags().StringVar(&cliSrcIPFlag, "srcip", "", "set source IP address for generated packets")
+	cmd.PersistentFlags().StringVar(&cliSrcMACFlag, "srcmac", "", "set source MAC address for generated packets")
+	if conf.gatewayMAC {
+		cmd.PersistentFlags().StringVar(&cliGatewayMACFlag, "gwmac", "", "set gateway MAC address to send generated packets to")
+	}
+	cmd.PersistentFlags().StringVarP(&cliRateLimitFlag, "rate", "r", "",
 		strings.Join([]string{
 			"set rate limit for generated packets",
 			`format: "rateCount/rateWindow"`,
 			"where rateCount is a number of packets, rateWindow is the time interval",
 			"e.g. 1000/s -- 1000 packets per second", "500/7s -- 500 packets per 7 seconds\n"}, "\n"))
-	rootCmd.PersistentFlags().StringVar(&cliExitDelayFlag, "exit-delay", "",
+	cmd.PersistentFlags().StringVar(&cliExitDelayFlag, "exit-delay", "",
 		strings.Join([]string{
 			"set exit delay to wait for response packets",
 			"any expression accepted by time.ParseDuration is valid (300ms by default)"}, "\n"))
@@ -158,15 +186,15 @@ func Main() {
 }
 
 type scanConfig struct {
-	logger    log.Logger
-	scanRange *scan.Range
-	cache     *arp.Cache
-	gatewayIP net.IP
+	logger     log.Logger
+	scanRange  *scan.Range
+	cache      *arp.Cache
+	gatewayMAC net.HardwareAddr
 }
 
-func parseScanConfig(scanName, subnet string) (c *scanConfig, err error) {
+func parseScanConfig(scanName string, dstSubnet *net.IPNet) (c *scanConfig, err error) {
 	var r *scan.Range
-	if r, err = parseScanRange(subnet); err != nil {
+	if r, err = getScanRange(dstSubnet); err != nil {
 		return
 	}
 
@@ -180,17 +208,28 @@ func parseScanConfig(scanName, subnet string) (c *scanConfig, err error) {
 		return
 	}
 
-	var gatewayIP net.IP
-	if gatewayIP, err = getGatewayIP(r); err != nil {
+	var gatewayMAC net.HardwareAddr
+	if gatewayMAC, err = getGatewayMAC(r.Interface, cache); err != nil {
 		return
 	}
+
 	c = &scanConfig{
-		logger:    logger,
-		scanRange: r,
-		cache:     cache,
-		gatewayIP: gatewayIP,
+		logger:     logger,
+		scanRange:  r,
+		cache:      cache,
+		gatewayMAC: gatewayMAC,
 	}
 	return
+}
+
+func parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
+	if len(args) == 0 && len(cliIPPortFileFlag) == 0 {
+		return nil, errors.New("requires one ip subnet argument or file with ip/port pairs")
+	}
+	if len(args) == 0 {
+		return
+	}
+	return ip.ParseIPNet(args[0])
 }
 
 func parseARPCache() (cache *arp.Cache, err error) {
@@ -219,20 +258,15 @@ func parseARPCache() (cache *arp.Cache, err error) {
 	return
 }
 
-func parseScanRange(subnet string) (*scan.Range, error) {
-	dstSubnet, err := ip.ParseIPNet(subnet)
+func getScanRange(dstSubnet *net.IPNet) (*scan.Range, error) {
+	iface, srcIP, err := getInterface(dstSubnet)
 	if err != nil {
 		return nil, err
 	}
-	iface, srcSubnet, err := getSubnetInterface(dstSubnet)
-	if err != nil {
-		return nil, err
-	}
-	if iface == nil || srcSubnet == nil {
+	if iface == nil {
 		return nil, errSrcInterface
 	}
 
-	srcIP := srcSubnet.IP
 	if cliSrcIP != nil {
 		srcIP = cliSrcIP
 	}
@@ -252,7 +286,6 @@ func parseScanRange(subnet string) (*scan.Range, error) {
 		Interface: iface,
 		DstSubnet: dstSubnet,
 		Ports:     cliPortRanges,
-		SrcSubnet: srcSubnet,
 		SrcIP:     srcIP.To4(),
 		SrcMAC:    srcMAC}, nil
 }
@@ -337,14 +370,44 @@ func parseIPFlags(inputFlags string) (result uint8, err error) {
 	return
 }
 
-func getSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, srcSubnet *net.IPNet, err error) {
+func getLocalSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {
 	if cliInterface == nil {
-		return ip.GetSubnetInterface(dstSubnet)
+		return ip.GetLocalSubnetInterface(dstSubnet)
 	}
-	if srcSubnet, err = ip.GetSubnetInterfaceIP(cliInterface, dstSubnet); err != nil {
+	ifaceIP, err = ip.GetLocalSubnetInterfaceIP(cliInterface, dstSubnet)
+	return cliInterface, ifaceIP, err
+}
+
+func getInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {
+	if dstSubnet != nil {
+		// try to find directly connected interface
+		if iface, ifaceIP, err = getLocalSubnetInterface(dstSubnet); err != nil {
+			return
+		}
+		// found local interface
+		if iface != nil && ifaceIP != nil {
+			return
+		}
+	}
+	if cliInterface != nil {
+		// try to get first ip address
+		ifaceIP, err = ip.GetInterfaceIP(cliInterface)
+		return cliInterface, ifaceIP, err
+	}
+	// fallback to interface of default gateway
+	return ip.GetDefaultInterface()
+}
+
+func getGatewayMAC(iface *net.Interface, cache *arp.Cache) (mac net.HardwareAddr, err error) {
+	if cliGatewayMAC != nil {
+		return cliGatewayMAC, nil
+	}
+	var gatewayIP net.IP
+	if gatewayIP, err = ip.GetDefaultGatewayIP(iface); err != nil {
 		return
 	}
-	return iface, srcSubnet, nil
+	mac = cache.Get(gatewayIP.To4())
+	return
 }
 
 func getLogger(name string, w io.Writer) (logger log.Logger, err error) {
@@ -353,23 +416,6 @@ func getLogger(name string, w io.Writer) (logger log.Logger, err error) {
 		opts = append(opts, log.JSON())
 	}
 	logger, err = log.NewLogger(w, name, opts...)
-	return
-}
-
-func getGatewayIP(r *scan.Range) (gatewayIP net.IP, err error) {
-	var router routing.Router
-	if router, err = routing.New(); err != nil {
-		return
-	}
-	if _, gatewayIP, _, err = router.RouteWithSrc(
-		r.Interface.HardwareAddr, r.SrcIP, r.DstSubnet.IP); err != nil {
-		return
-	}
-	// if local address then don't need gateway
-	if gatewayIP == nil || r.DstSubnet.Contains(gatewayIP) {
-		return nil, nil
-	}
-	gatewayIP = gatewayIP.To4()
 	return
 }
 

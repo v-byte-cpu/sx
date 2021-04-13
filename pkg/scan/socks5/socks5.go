@@ -115,7 +115,6 @@ func (s *Scanner) Scan(ctx context.Context, r *scan.Request) (result scan.Result
 		return
 	}
 
-	// TODO also detect auth
 	if reply.Ver == SOCKSVersion && reply.Method == MethodNoAuth {
 		result = &ScanResult{
 			ScanType: ScanType,

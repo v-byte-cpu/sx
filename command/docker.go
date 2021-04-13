@@ -10,7 +10,6 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
-	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/docker"
 )
@@ -36,13 +35,7 @@ var dockerCmd = &cobra.Command{
 		if cliProtoFlag != cliHTTPProtoFlag && cliProtoFlag != cliHTTPSProtoFlag {
 			return errors.New("invalid HTTP proto flag: http or https required")
 		}
-		if len(args) == 0 && len(cliIPPortFileFlag) == 0 {
-			return errors.New("requires one ip subnet argument or file with ip/port pairs")
-		}
-		if len(args) == 0 {
-			return
-		}
-		cliDstSubnet, err = ip.ParseIPNet(args[0])
+		cliDstSubnet, err = parseDstSubnet(args)
 		return
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {

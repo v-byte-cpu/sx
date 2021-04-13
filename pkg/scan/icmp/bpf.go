@@ -1,7 +1,7 @@
 package icmp
 
 import (
-	"fmt"
+	"strings"
 
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
@@ -11,8 +11,12 @@ import (
 const MaxPacketLength = 1518
 
 func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
-	if r.DstSubnet == nil {
-		return "icmp", MaxPacketLength
+	var sb strings.Builder
+	// filter ECHO requests
+	sb.WriteString("icmp and icmp[0]!=8")
+	if r.DstSubnet != nil {
+		sb.WriteString(" and ip src net ")
+		sb.WriteString(r.DstSubnet.String())
 	}
-	return fmt.Sprintf("icmp and ip src net %s", r.DstSubnet.String()), MaxPacketLength
+	return sb.String(), MaxPacketLength
 }

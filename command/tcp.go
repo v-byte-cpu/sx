@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"errors"
-	golog "log"
 	"os"
 	"os/signal"
 	"runtime"
@@ -34,10 +33,9 @@ var (
 )
 
 func init() {
+	addPacketScanOptions(tcpCmd)
+	tcpCmd.PersistentFlags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	tcpCmd.PersistentFlags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
-	if err := tcpCmd.MarkPersistentFlagRequired("ports"); err != nil {
-		golog.Fatalln(err)
-	}
 	tcpCmd.PersistentFlags().StringVarP(&cliARPCacheFileFlag, "arp-cache", "a", "",
 		strings.Join([]string{"set ARP cache file", "reads from stdin by default"}, "\n"))
 	tcpCmd.Flags().StringVar(&cliTCPPacketFlags, "flags", "", "set TCP flags")
@@ -51,18 +49,19 @@ var tcpCmd = &cobra.Command{
 		"tcp --flags fin,ack -p 22 192.168.0.3"}, "\n"),
 	Short: "Perform TCP scan",
 	Long:  "Perform TCP scan. TCP SYN scan is used by default unless --flags option is specified",
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
+	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
+		if err = rootCmd.PersistentPreRunE(cmd, args); err != nil {
+			return
 		}
-		return nil
+		cliDstSubnet, err = parseDstSubnet(args)
+		return
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 		defer cancel()
 
 		if len(cliTCPPacketFlags) == 0 {
-			return startTCPSYNScan(ctx, args[0])
+			return startTCPSYNScan(ctx, cliDstSubnet)
 		}
 
 		var tcpFlags []string
@@ -77,7 +76,7 @@ var tcpCmd = &cobra.Command{
 
 		scanName := tcp.FlagsScanType
 		var conf *scanConfig
-		if conf, err = parseScanConfig(scanName, args[0]); err != nil {
+		if conf, err = parseScanConfig(scanName, cliDstSubnet); err != nil {
 			return
 		}
 
@@ -162,10 +161,7 @@ func newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConf
 	for _, o := range opts {
 		o(c)
 	}
-	portgen := scan.NewPortGenerator()
-	ipgen := scan.NewIPGenerator()
-	reqgen := arp.NewCacheRequestGenerator(
-		scan.NewIPPortGenerator(ipgen, portgen), conf.gatewayIP, conf.cache)
+	reqgen := arp.NewCacheRequestGenerator(newIPPortGenerator(), conf.gatewayMAC, conf.cache)
 	pktgen := scan.NewPacketMultiGenerator(c.packetFiller, runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)

@@ -542,9 +542,10 @@ func TestFileIPPortGenerator(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name     string
-		input    string
-		expected []interface{}
+		name      string
+		input     string
+		scanRange *Range
+		expected  []interface{}
 	}{
 		{
 			name:  "OneIPPort",
@@ -615,6 +616,44 @@ func TestFileIPPortGenerator(t *testing.T) {
 				&Request{Err: ErrPort},
 			},
 		},
+		{
+			name: "EmptyPortAfterValid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"ip":"192.168.0.3"}`,
+			}, "\n"),
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				&Request{Err: ErrPort},
+			},
+		},
+		{
+			name: "EmptyIPAfterValid",
+			input: strings.Join([]string{
+				`{"ip":"192.168.0.1","port":888}`,
+				`{"port":888}`,
+			}, "\n"),
+			expected: []interface{}{
+				&Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				&Request{Err: ErrIP},
+			},
+		},
+		{
+			name:  "OneIPPortWithSrcIPandSrcMAC",
+			input: `{"ip":"192.168.0.1","port":888}`,
+			scanRange: &Range{
+				SrcIP:  net.IPv4(192, 168, 0, 3),
+				SrcMAC: net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+			},
+			expected: []interface{}{
+				&Request{
+					SrcIP:   net.IPv4(192, 168, 0, 3),
+					SrcMAC:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
+					DstIP:   net.IPv4(192, 168, 0, 1),
+					DstPort: 888,
+				},
+			},
+		},
 	}
 	for _, vtt := range tests {
 		tt := vtt
@@ -628,7 +667,10 @@ func TestFileIPPortGenerator(t *testing.T) {
 				reqgen := NewFileIPPortGenerator(func() (io.ReadCloser, error) {
 					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
 				})
-				pairs, err := reqgen.GenerateRequests(context.Background(), &Range{})
+				if tt.scanRange == nil {
+					tt.scanRange = &Range{}
+				}
+				pairs, err := reqgen.GenerateRequests(context.Background(), tt.scanRange)
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
 				require.Equal(t, tt.expected, result)

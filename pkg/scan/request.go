@@ -203,7 +203,7 @@ func NewFileIPPortGenerator(openFile OpenFileFunc) RequestGenerator {
 }
 
 // TODO add meta field
-func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, _ *Range) (<-chan *Request, error) {
+func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, r *Range) (<-chan *Request, error) {
 	input, err := rg.openFile()
 	if err != nil {
 		return nil, err
@@ -215,6 +215,8 @@ func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, _ *Range) (
 		scanner := bufio.NewScanner(input)
 		var entry IPPort
 		for scanner.Scan() {
+			entry.IP = ""
+			entry.Port = 0
 			if err := entry.UnmarshalJSON(scanner.Bytes()); err != nil {
 				writeRequest(ctx, out, &Request{Err: ErrJSON})
 				return
@@ -222,13 +224,14 @@ func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, _ *Range) (
 			ip := net.ParseIP(entry.IP)
 			if ip == nil {
 				writeRequest(ctx, out, &Request{Err: ErrIP})
-				return
+				continue
 			}
 			if !isValidPort(entry.Port) {
 				writeRequest(ctx, out, &Request{Err: ErrPort})
-				return
+				continue
 			}
-			writeRequest(ctx, out, &Request{DstIP: ip, DstPort: uint16(entry.Port)})
+			writeRequest(ctx, out, &Request{
+				SrcIP: r.SrcIP, SrcMAC: r.SrcMAC, DstIP: ip, DstPort: uint16(entry.Port)})
 		}
 		if err = scanner.Err(); err != nil {
 			writeRequest(ctx, out, &Request{Err: err})
