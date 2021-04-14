@@ -14,7 +14,7 @@ require (
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/jinzhu/copier v0.2.9
 	github.com/mailru/easyjson v0.7.7
-	github.com/moby/moby v20.10.5+incompatible
+	github.com/moby/moby v20.10.6+incompatible
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
