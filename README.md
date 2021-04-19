@@ -1,6 +1,8 @@
 
 <h1 align="center">
-<img alt="sx" width="400" src="assets/logo.svg">
+  <a href="https://github.com/v-byte-cpu/sx#readme">
+    <img alt="sx" width="400" src="assets/logo.svg">
+  </a>
 </h1>
 
 <div align="center">
