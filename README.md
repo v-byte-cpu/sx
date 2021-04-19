@@ -1,26 +1,46 @@
-# sx
 
+<h1 align="center">
+<img alt="sx" width="400" src="assets/logo.svg">
+</h1>
+
+<div align="center">
+
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/v-byte-cpu/sx/blob/master/LICENSE)
 [![Build Status](https://cloud.drone.io/api/badges/v-byte-cpu/sx/status.svg)](https://cloud.drone.io/v-byte-cpu/sx)
 [![GoReportCard Status](https://goreportcard.com/badge/github.com/v-byte-cpu/sx)](https://goreportcard.com/report/github.com/v-byte-cpu/sx)
+
+</div>
 
 **sx** is the command-line network scanner designed to follow the UNIX philosophy.
 
 The goal of this project is to create the fastest network scanner with clean and simple code.
 
-## Features
+## 📖 Table of Contents
 
+* [Features](https://github.com/v-byte-cpu/sx#features)
+* [Build from source](https://github.com/v-byte-cpu/sx#build-from-source)
+* [Quick Start](https://github.com/v-byte-cpu/sx#build-from-source)
+* [References](https://github.com/v-byte-cpu/sx#references)
+* [Contributing](https://github.com/v-byte-cpu/sx#contributing)
+* [Credits](https://github.com/v-byte-cpu/sx#credits)
+* [License](https://github.com/v-byte-cpu/sx#license)
+
+## ✨ Features
+
+  * **⚡ 30x times faster** than nmap
   * **ARP scan**: Scan your local networks to detect live devices
   * **ICMP scan**: Use advanced ICMP scanning techniques to detect live hosts and firewall rules
   * **TCP SYN scan**: Traditional half-open scan to find open TCP ports
   * **TCP FIN / NULL / Xmas scans**: Scan techniques to bypass some firewall rules
   * **Custom TCP scans with any TCP flags**: Send whatever exotic packets you want and get a result with all the TCP flags set in the reply packet
   * **UDP scan**: Scan UDP ports and get full ICMP replies to detect open ports or firewall rules
-  * **SOCKS5 scan**: Detect live SOCKS5 proxies by scanning ip range or list of ip/port pairs from a file
-  * **Docker scan**: Detect open Docker daemons listening on TCP ports and get information about the docker node
-  * **Elasticsearch scan**: Detect open Elasticsearch nodes and pull out cluster information with all index names
+  * **Application scans**:
+    * **SOCKS5 scan**: Detect live SOCKS5 proxies by scanning ip range or list of ip/port pairs from a file
+    * **Docker scan**: Detect open Docker daemons listening on TCP ports and get information about the docker node
+    * **Elasticsearch scan**: Detect open Elasticsearch nodes and pull out cluster information with all index names
   * **JSON output support**: sx is designed specifically for convenient automatic processing of results
 
-## Build from source
+## 🛠 Build from source
 
 Requirements:
 
@@ -33,7 +53,7 @@ From the root of the source tree, run:
 go build
 ```
 
-## Quick Start
+## 🚀 Quick Start
 
 Here's a quick examples showing how you can scan networks with `sx`.
 
@@ -389,7 +409,7 @@ In this case only ip addresses will be taken from the file and the **port** fiel
 ./sx help
 ```
 
-## Reference
+## 📜 References
 
   * **Network Security Assessment: Know Your Network 1st Edition** by Chris McNab
   * **ICMP Usage in Scanning - The Complete Know-How** by Ofir Arkin
@@ -398,6 +418,14 @@ In this case only ip addresses will be taken from the file and the **port** fiel
   * [Requirements for Internet Hosts -- Communication Layers ( rfc1122 )](https://tools.ietf.org/rfc/rfc1122.txt)
   * [SOCKS Protocol Version 5 ( rfc1928 )](https://tools.ietf.org/rfc/rfc1928.txt)
   * [Internet Control Message Protocol ( rfc792 )](https://tools.ietf.org/rfc/rfc792.txt)
+
+## 🤝 Contributing
+
+Contributions, issues and feature requests are welcome.
+
+## 💎 Credits
+
+Logo is designed by [mikhailtsoy.com](https://mikhailtsoy.com/)
 
 
 ## License
