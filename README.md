@@ -62,7 +62,7 @@ Here's a quick examples showing how you can scan networks with `sx`.
 Scan your local network and display the IP address, MAC address and associated hardware vendor of connected devices:
 
 ```
-./sx arp 192.168.0.1/24
+sx arp 192.168.0.1/24
 ```
 
 sample output:
@@ -76,7 +76,7 @@ sample output:
 with JSON output:
 
 ```
-./sx arp --json 192.168.0.1/24
+sx arp --json 192.168.0.1/24
 ```
 
 sample output:
@@ -90,13 +90,13 @@ sample output:
 wait 5 seconds before exiting to receive delayed reply packets, by default `sx` waits 300 milliseconds:
 
 ```
-./sx arp --exit-delay 5s 192.168.0.1/24
+sx arp --exit-delay 5s 192.168.0.1/24
 ```
 
 Live scan mode that rescans network every 10 seconds:
 
 ```
-./sx arp 192.168.0.1/24 --live 10s
+sx arp 192.168.0.1/24 --live 10s
 ```
 
 ### TCP scan
@@ -109,13 +109,13 @@ Let's assume that the actual ARP cache is in the `arp.cache` file. We can create
 or use ARP scan as shown below:
 
 ```
-./sx arp 192.168.0.1/24 --json | tee arp.cache
+sx arp 192.168.0.1/24 --json | tee arp.cache
 ```
 
 Once we have the ARP cache file, we can run scans of higher-level protocols like TCP SYN scan:
 
 ```
-cat arp.cache | ./sx tcp -p 1-65535 192.168.0.171
+cat arp.cache | sx tcp -p 1-65535 192.168.0.171
 ```
 
 sample output:
@@ -130,7 +130,7 @@ In this case we find out that ports 22 and 443 are open.
 scan with JSON output:
 
 ```
-cat arp.cache | ./sx tcp  --json -p 1-65535 192.168.0.171
+cat arp.cache | sx tcp  --json -p 1-65535 192.168.0.171
 ```
 
 sample output:
@@ -143,31 +143,46 @@ sample output:
 scan multiple port ranges:
 
 ```
-cat arp.cache | ./sx tcp -p 1-23,25-443 192.168.0.171
+cat arp.cache | sx tcp -p 1-23,25-443 192.168.0.171
 ```
 
 or individual ports:
 
 ```
-cat arp.cache | ./sx tcp -p 22,443 192.168.0.171
+cat arp.cache | sx tcp -p 22,443 192.168.0.171
+```
+
+scan ip/port pairs from a file with JSON output:
+
+```
+cat arp.cache | sx tcp --json -f ip_ports_file.jsonl
+```
+
+Each line of the input file is a json string, which must contain the **ip** and **port** fields.
+
+sample input file:
+
+```
+{"ip":"10.0.1.1","port":1080}
+{"ip":"10.0.2.2","port":1081}
 ```
 
 It is possible to specify the ARP cache file using the `-a` or `--arp-cache` options:
 
 ```
-./sx tcp -a arp.cache -p 22,443 192.168.0.171
+sx tcp -a arp.cache -p 22,443 192.168.0.171
 ```
 
 or stdin redirect:
 
 ```
-./sx tcp -p 22,443 192.168.0.171 < arp.cache
+sx tcp -p 22,443 192.168.0.171 < arp.cache
 ```
 
 You can also use the `tcp syn` subcommand instead of the `tcp`:
 
 ```
-cat arp.cache | ./sx tcp syn -p 22 192.168.0.171
+cat arp.cache | sx tcp syn -p 22 192.168.0.171
 ```
 
 `tcp` subcomand is just a shorthand for `tcp syn` subcommand unless `--flags` option is passed, see below.
@@ -213,7 +228,7 @@ will drop the TCP packet containing any flags except SYN,ACK and RST.
 Let's scan some closed port with TCP FIN scan:
 
 ```
-cat arp.cache | ./sx tcp fin --json -p 23 192.168.0.171
+cat arp.cache | sx tcp fin --json -p 23 192.168.0.171
 ```
 
 sample output:
@@ -242,13 +257,13 @@ Other types of TCP scans can be conducted by analogy.
 TCP NULL scan:
 
 ```
-cat arp.cache | ./sx tcp null --json -p 23 192.168.0.171
+cat arp.cache | sx tcp null --json -p 23 192.168.0.171
 ```
 
 TCP Xmas scan:
 
 ```
-cat arp.cache | ./sx tcp xmas --json -p 23 192.168.0.171
+cat arp.cache | sx tcp xmas --json -p 23 192.168.0.171
 ```
 
 ### Custom TCP scans
@@ -258,7 +273,7 @@ It is possible to send TCP packets with custom TCP flags using `--flags` option.
 Let's send TCP packet with SYN, FIN and ACK flags set to fingerprint remote OS:
 
 ```
-cat arp.cache | ./sx tcp --flags syn,fin,ack --json -p 23 192.168.0.171
+cat arp.cache | sx tcp --flags syn,fin,ack --json -p 23 192.168.0.171
 ```
 
 Windows and MacOS will not respond to this packet, but Linux will send reply packet with RST flag.
@@ -289,7 +304,7 @@ Similar to TCP scans, `sx` returns information about all reply ICMP packets for 
 For instance, to detect DNS server on host, run:
 
 ```
-cat arp.cache | ./sx udp --json -p 53 192.168.0.171
+cat arp.cache | sx udp --json -p 53 192.168.0.171
 ```
 
 sample output:
@@ -311,7 +326,7 @@ the `--rate` option.
 For example, to limit the speed to 1 packet per 5 seconds:
 
 ```
-cat arp.cache | ./sx tcp --rate 1/5s --json -p 22,80,443 192.168.0.171
+cat arp.cache | sx tcp --rate 1/5s --json -p 22,80,443 192.168.0.171
 ```
 
 ### Live LAN TCP SYN scanner
@@ -321,13 +336,13 @@ As an example of scan composition, you can combine ARP and TCP SYN scans to crea
 Start live ARP scan and save results to `arp.cache` file:
 
 ```
-./sx arp 192.168.0.1/24 --live 10s --json | tee arp.cache
+sx arp 192.168.0.1/24 --live 10s --json | tee arp.cache
 ```
 
 In another terminal start TCP SYN scan:
 
 ```
-while true; do cat arp.cache | ./sx tcp -p 1-65535 192.168.0.1/24 --json 2> /dev/null; sleep 30; done
+while true; do sx tcp -p 1-65535 -a arp.cache -f arp.cache; sleep 30; done
 ```
 
 ### SOCKS5 scan
@@ -337,13 +352,13 @@ while true; do cat arp.cache | ./sx tcp -p 1-65535 192.168.0.1/24 --json 2> /dev
 For example, an IP range scan:
 
 ```
-./sx socks -p 1080 10.0.0.1/16
+sx socks -p 1080 10.0.0.1/16
 ```
 
 scan ip/port pairs from a file with JSON output:
 
 ```
-./sx socks --json -f ip_ports_file.jsonl 2> /dev/null | tee results.jsonl
+sx socks --json -f ip_ports_file.jsonl 
 ```
 
 Each line of the input file is a json string, which must contain the **ip** and **port** fields.
@@ -358,7 +373,7 @@ sample input file:
 You can also specify a range of ports to scan:
 
 ```
-./sx socks -p 1080-4567 -f ips_file.jsonl
+sx socks -p 1080-4567 -f ips_file.jsonl
 ```
 
 In this case only ip addresses will be taken from the file and the **port** field is no longer necessary.
@@ -370,19 +385,19 @@ Elasticsearch scan retrieves the cluster information and a list of all indexes a
 For example, an IP range scan:
 
 ```
-./sx elastic -p 9200 10.0.0.1/16
+sx elastic -p 9200 10.0.0.1/16
 ```
 
 By default the scan uses the http protocol, to use the https protocol specify the `--proto` option:
 
 ```
-./sx elastic --proto https -p 9200 10.0.0.1/16
+sx elastic --proto https -p 9200 10.0.0.1/16
 ```
 
 scan ip/port pairs from a file with JSON output:
 
 ```
-./sx elastic --json -f ip_ports_file.jsonl 2> /dev/null | tee results.jsonl
+sx elastic --json -f ip_ports_file.jsonl
 ```
 
 Each line of the input file is a json string, which must contain the **ip** and **port** fields.
@@ -397,7 +412,7 @@ sample input file:
 You can also specify a range of ports to scan:
 
 ```
-./sx elastic -p 9200-9267 -f ips_file.jsonl
+sx elastic -p 9200-9267 -f ips_file.jsonl
 ```
 
 In this case only ip addresses will be taken from the file and the **port** field is no longer necessary.
@@ -406,7 +421,7 @@ In this case only ip addresses will be taken from the file and the **port** fiel
 ## Usage help
 
 ```
-./sx help
+sx help
 ```
 
 ## 📜 References
