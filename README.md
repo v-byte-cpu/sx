@@ -17,12 +17,12 @@ The goal of this project is to create the fastest network scanner with clean and
 
 ## 📖 Table of Contents
 
-* [Features](https://github.com/v-byte-cpu/sx#features)
-* [Build from source](https://github.com/v-byte-cpu/sx#build-from-source)
-* [Quick Start](https://github.com/v-byte-cpu/sx#build-from-source)
-* [References](https://github.com/v-byte-cpu/sx#references)
-* [Contributing](https://github.com/v-byte-cpu/sx#contributing)
-* [Credits](https://github.com/v-byte-cpu/sx#credits)
+* [Features](https://github.com/v-byte-cpu/sx#-features)
+* [Build from source](https://github.com/v-byte-cpu/sx#-build-from-source)
+* [Quick Start](https://github.com/v-byte-cpu/sx#-quick-start)
+* [References](https://github.com/v-byte-cpu/sx#-references)
+* [Contributing](https://github.com/v-byte-cpu/sx#-contributing)
+* [Credits](https://github.com/v-byte-cpu/sx#-credits)
 * [License](https://github.com/v-byte-cpu/sx#license)
 
 ## ✨ Features
