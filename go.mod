@@ -12,7 +12,7 @@ require (
 	github.com/golang/mock v1.5.0
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/jinzhu/copier v0.2.9
+	github.com/jinzhu/copier v0.3.0
 	github.com/mailru/easyjson v0.7.7
 	github.com/moby/moby v20.10.6+incompatible
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
