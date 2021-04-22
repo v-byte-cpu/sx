@@ -324,10 +324,10 @@ func TestScanEngineWithResults(t *testing.T) {
 		sort.Slice(results, func(i, j int) bool {
 			return results[i].ID() < results[j].ID()
 		})
-		require.Equal(t, results, []Result{
+		require.Equal(t, []Result{
 			&mockScanResult{"id1"},
 			&mockScanResult{"id2"},
-		})
+		}, results)
 	}()
 	waitDone(t, done)
 }
