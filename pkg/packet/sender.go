@@ -52,6 +52,9 @@ func (s *sender) SendPackets(ctx context.Context, in <-chan *BufferData) (<-chan
 				if err := s.w.WritePacketData(pkt.Buf.Bytes()); err != nil {
 					errc <- err
 				}
+				if err := FreeSerializeBuffer(pkt.Buf); err != nil {
+					errc <- err
+				}
 			}
 		}
 	}()
