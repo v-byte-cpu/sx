@@ -91,7 +91,7 @@ func mergeErrChan(ctx context.Context, channels ...<-chan error) <-chan error {
 	var wg sync.WaitGroup
 	wg.Add(len(channels))
 
-	out := make(chan error)
+	out := make(chan error, 100)
 	multiplex := func(c <-chan error) {
 		defer wg.Done()
 		for {

@@ -3,6 +3,7 @@ package tcp
 import (
 	"context"
 	"net"
+	"runtime"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
+	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
 func TestPacketFiller(t *testing.T) {
@@ -284,4 +286,63 @@ func TestAllFlags(t *testing.T) {
 			require.Equal(t, tt.expected, flags)
 		})
 	}
+}
+
+type mockIPGeneratorFunc func(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error)
+
+func (f mockIPGeneratorFunc) IPs(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error) {
+	return f(ctx, r)
+}
+
+type nullPacketReadWriter struct{}
+
+func (*nullPacketReadWriter) ReadPacketData() (data []byte, ci *gopacket.CaptureInfo, err error) {
+	return
+}
+
+func (*nullPacketReadWriter) WritePacketData(_ []byte) error {
+	return nil
+}
+
+func BenchmarkTCPScanEngine(b *testing.B) {
+	b.ReportAllocs()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	dstIP := net.IPv4(192, 168, 0, 3).To4()
+	ipgen := mockIPGeneratorFunc(func(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error) {
+		out := make(chan scan.IPGetter, 100)
+		go func() {
+			defer close(out)
+			for i := 0; i < b.N; i++ {
+				select {
+				case <-ctx.Done():
+					return
+				case out <- scan.WrapIP(dstIP):
+				}
+			}
+		}()
+		return out, nil
+	})
+	reqgen := arp.NewCacheRequestGenerator(
+		scan.NewIPPortGenerator(ipgen, scan.NewPortGenerator()),
+		net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
+		arp.NewCache())
+	pktgen := scan.NewPacketMultiGenerator(NewPacketFiller(), runtime.NumCPU())
+	psrc := scan.NewPacketSource(reqgen, pktgen)
+	results := scan.NewResultChan(ctx, 1000)
+	sm := NewScanMethod("tcpbench", psrc, results)
+	engine := scan.SetupPacketEngine(&nullPacketReadWriter{}, sm)
+
+	done, _ := engine.Start(ctx, &scan.Range{
+		SrcIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		Ports: []*scan.PortRange{
+			{
+				StartPort: 22,
+				EndPort:   22,
+			},
+		},
+	})
+	<-done
 }

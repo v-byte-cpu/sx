@@ -309,16 +309,14 @@ func TestScanEngineWithResults(t *testing.T) {
 
 		done, errc := engine.Start(ctx, &Range{})
 		<-done
+		results := make([]Result, 2)
+		results[0] = <-resultCh.Chan()
+		results[1] = <-resultCh.Chan()
 		cancel()
 		require.Zero(t, len(errc), "error channel is not empty")
-		var results []Result
-		cnt := 0
-		for result := range resultCh.Chan() {
-			cnt++
-			if cnt > 2 {
-				require.Fail(t, "result channel contains more elements than expected: ", result)
-			}
-			results = append(results, result)
+		result, ok := <-resultCh.Chan()
+		if ok {
+			require.Fail(t, "result channel contains more elements than expected: ", result)
 		}
 
 		sort.Slice(results, func(i, j int) bool {

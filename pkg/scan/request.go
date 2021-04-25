@@ -47,7 +47,7 @@ func (*portGenerator) Ports(ctx context.Context, r *Range) (<-chan uint16, error
 	if err := validatePorts(r.Ports); err != nil {
 		return nil, err
 	}
-	out := make(chan uint16)
+	out := make(chan uint16, 100)
 	go func() {
 		defer close(out)
 		for _, portRange := range r.Ports {
@@ -79,9 +79,9 @@ type IPGetter interface {
 	GetIP() (net.IP, error)
 }
 
-type wrapIP net.IP
+type WrapIP net.IP
 
-func (i wrapIP) GetIP() (net.IP, error) {
+func (i WrapIP) GetIP() (net.IP, error) {
 	return net.IP(i), nil
 }
 
@@ -99,12 +99,12 @@ func (*ipGenerator) IPs(ctx context.Context, r *Range) (<-chan IPGetter, error) 
 	if r.DstSubnet == nil {
 		return nil, ErrSubnet
 	}
-	out := make(chan IPGetter)
+	out := make(chan IPGetter, 100)
 	go func() {
 		defer close(out)
 		ipnet := r.DstSubnet
 		for ipaddr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ipaddr); ip.Inc(ipaddr) {
-			writeIP(ctx, out, wrapIP(ip.DupIP(ipaddr)))
+			writeIP(ctx, out, WrapIP(ip.DupIP(ipaddr)))
 		}
 	}()
 	return out, nil
@@ -132,7 +132,7 @@ func (rg *ipPortGenerator) GenerateRequests(ctx context.Context, r *Range) (<-ch
 	if err != nil {
 		return nil, err
 	}
-	out := make(chan *Request)
+	out := make(chan *Request, 100)
 	go func() {
 		defer close(out)
 		for port := range ports {
@@ -281,7 +281,7 @@ func (g *fileIPGenerator) IPs(ctx context.Context, _ *Range) (<-chan IPGetter, e
 				writeIP(ctx, out, &ipError{error: ErrIP})
 				return
 			}
-			writeIP(ctx, out, wrapIP(ip))
+			writeIP(ctx, out, WrapIP(ip))
 		}
 		if err = scanner.Err(); err != nil {
 			writeIP(ctx, out, &ipError{error: err})

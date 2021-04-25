@@ -246,7 +246,7 @@ func TestIPGenerator(t *testing.T) {
 				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
 			),
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1).To4()),
+				WrapIP(net.IPv4(192, 168, 0, 1).To4()),
 			},
 		},
 		{
@@ -255,8 +255,8 @@ func TestIPGenerator(t *testing.T) {
 				withSubnet(&net.IPNet{IP: net.IPv4(1, 0, 0, 1), Mask: net.CIDRMask(31, 32)}),
 			),
 			expected: []interface{}{
-				wrapIP(net.IPv4(1, 0, 0, 0).To4()),
-				wrapIP(net.IPv4(1, 0, 0, 1).To4()),
+				WrapIP(net.IPv4(1, 0, 0, 0).To4()),
+				WrapIP(net.IPv4(1, 0, 0, 1).To4()),
 			},
 		},
 		{
@@ -265,10 +265,10 @@ func TestIPGenerator(t *testing.T) {
 				withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 1), Mask: net.CIDRMask(30, 32)}),
 			),
 			expected: []interface{}{
-				wrapIP(net.IPv4(10, 0, 0, 0).To4()),
-				wrapIP(net.IPv4(10, 0, 0, 1).To4()),
-				wrapIP(net.IPv4(10, 0, 0, 2).To4()),
-				wrapIP(net.IPv4(10, 0, 0, 3).To4()),
+				WrapIP(net.IPv4(10, 0, 0, 0).To4()),
+				WrapIP(net.IPv4(10, 0, 0, 1).To4()),
+				WrapIP(net.IPv4(10, 0, 0, 2).To4()),
+				WrapIP(net.IPv4(10, 0, 0, 3).To4()),
 			},
 		},
 	}
@@ -702,14 +702,14 @@ func TestFileIPGenerator(t *testing.T) {
 			name:  "OneIP",
 			input: `{"ip":"192.168.0.1"}`,
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1)),
+				WrapIP(net.IPv4(192, 168, 0, 1)),
 			},
 		},
 		{
 			name:  "OneIPWithUnknownField",
 			input: `{"ip":"192.168.0.1","abc":"field"}`,
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1)),
+				WrapIP(net.IPv4(192, 168, 0, 1)),
 			},
 		},
 		{
@@ -719,8 +719,8 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192.168.0.2"}`,
 			}, "\n"),
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1)),
-				wrapIP(net.IPv4(192, 168, 0, 2)),
+				WrapIP(net.IPv4(192, 168, 0, 1)),
+				WrapIP(net.IPv4(192, 168, 0, 2)),
 			},
 		},
 		{
@@ -737,7 +737,7 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192`,
 			}, "\n"),
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1)),
+				WrapIP(net.IPv4(192, 168, 0, 1)),
 				&ipError{error: ErrJSON},
 			},
 		},
@@ -749,7 +749,7 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192.168.0.3","port":888}`,
 			}, "\n"),
 			expected: []interface{}{
-				wrapIP(net.IPv4(192, 168, 0, 1)),
+				WrapIP(net.IPv4(192, 168, 0, 1)),
 				&ipError{error: ErrJSON},
 			},
 		},

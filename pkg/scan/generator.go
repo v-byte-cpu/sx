@@ -27,7 +27,7 @@ type packetGenerator struct {
 }
 
 func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-chan *packet.BufferData {
-	out := make(chan *packet.BufferData)
+	out := make(chan *packet.BufferData, 100)
 	go func() {
 		defer close(out)
 		for {
@@ -42,8 +42,7 @@ func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-cha
 					writeBufToChan(ctx, out, &packet.BufferData{Err: r.Err})
 					continue
 				}
-				// TODO buffer pool
-				buf := gopacket.NewSerializeBuffer()
+				buf := packet.NewSerializeBuffer()
 				if err := g.filler.Fill(buf, r); err != nil {
 					writeBufToChan(ctx, out, &packet.BufferData{Err: err})
 					continue
@@ -86,7 +85,7 @@ func MergeBufferDataChan(ctx context.Context, channels ...<-chan *packet.BufferD
 	var wg sync.WaitGroup
 	wg.Add(len(channels))
 
-	out := make(chan *packet.BufferData)
+	out := make(chan *packet.BufferData, len(channels)*100)
 	multiplex := func(c <-chan *packet.BufferData) {
 		defer wg.Done()
 		for {
