@@ -53,6 +53,9 @@ var tcpCmd = &cobra.Command{
 		if err = rootCmd.PersistentPreRunE(cmd, args); err != nil {
 			return
 		}
+		if err = validatePacketScanStdin(); err != nil {
+			return
+		}
 		cliDstSubnet, err = parseDstSubnet(args)
 		return
 	},

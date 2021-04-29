@@ -61,6 +61,9 @@ var icmpCmd = &cobra.Command{
 		if cliDstSubnet, err = parseDstSubnet(args); err != nil {
 			return
 		}
+		if err = validatePacketScanStdin(); err != nil {
+			return
+		}
 		var icmpType uint64
 		if len(cliICMPTypeFlag) > 0 {
 			if icmpType, err = strconv.ParseUint(cliICMPTypeFlag, 10, 8); err != nil {
