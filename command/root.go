@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -179,6 +180,13 @@ func addPacketScanOptions(cmd *cobra.Command, opts ...cliPacketScanOption) {
 			"any expression accepted by time.ParseDuration is valid (300ms by default)"}, "\n"))
 }
 
+func validatePacketScanStdin() (err error) {
+	if isARPCacheFromStdin() && cliIPPortFileFlag == "-" {
+		return errors.New("ARP cache and IP file can not be read from stdin at the same time")
+	}
+	return
+}
+
 func Main() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
@@ -232,16 +240,13 @@ func parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
 	return ip.ParseIPNet(args[0])
 }
 
+func isARPCacheFromStdin() bool {
+	return len(cliARPCacheFileFlag) == 0 || cliARPCacheFileFlag == "-"
+}
+
 func parseARPCache() (cache *arp.Cache, err error) {
 	var r io.Reader
-	if len(cliARPCacheFileFlag) > 0 {
-		var f *os.File
-		if f, err = os.Open(cliARPCacheFileFlag); err != nil {
-			return
-		}
-		defer f.Close()
-		r = bufio.NewReader(f)
-	} else {
+	if isARPCacheFromStdin() {
 		var info os.FileInfo
 		if info, err = os.Stdin.Stat(); err != nil {
 			return
@@ -252,6 +257,13 @@ func parseARPCache() (cache *arp.Cache, err error) {
 			return nil, errStdin
 		}
 		r = os.Stdin
+	} else {
+		var f *os.File
+		if f, err = os.Open(cliARPCacheFileFlag); err != nil {
+			return
+		}
+		defer f.Close()
+		r = bufio.NewReader(f)
 	}
 	cache = arp.NewCache()
 	err = arp.FillCache(cache, r)
@@ -429,6 +441,9 @@ func newIPPortGenerator() (reqgen scan.RequestGenerator) {
 		})
 	}
 	ipgen := scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
+		if cliIPPortFileFlag == "-" {
+			return ioutil.NopCloser(os.Stdin), nil
+		}
 		return os.Open(cliIPPortFileFlag)
 	})
 	return scan.NewIPPortGenerator(ipgen, scan.NewPortGenerator())

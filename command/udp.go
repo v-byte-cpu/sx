@@ -54,6 +54,9 @@ var udpCmd = &cobra.Command{
 		if cliDstSubnet, err = parseDstSubnet(args); err != nil {
 			return
 		}
+		if err = validatePacketScanStdin(); err != nil {
+			return
+		}
 		if len(cliUDPPayloadFlag) > 0 {
 			cliUDPPayload, err = parsePacketPayload(cliUDPPayloadFlag)
 		}
