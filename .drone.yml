@@ -3,6 +3,14 @@ kind: pipeline
 type: docker
 name: sx-ci
 
+trigger:
+  branch:
+    - master
+  event:
+    - push
+    - tag
+    - pull_request
+
 clone:
   depth: 1
 
@@ -45,9 +53,35 @@ volumes:
   - name: deps
     temp: {}
 
+---
+kind: pipeline
+type: docker
+name: release
+
+depends_on:
+  - sx-ci
+
 trigger:
   branch:
     - master
   event:
-    - push
-    - pull_request
+    - tag
+
+clone:
+  depth: 1
+
+steps:
+  - name: fetch
+    image: alpine/git
+    commands:
+      - git fetch --tags
+
+  - name: release
+    image: golang:1.16-alpine
+    environment:
+      GITHUB_TOKEN:
+        from_secret: github_token
+    commands:
+      - apk add libpcap-dev libc-dev gcc linux-headers curl git
+      - curl -s https://raw.githubusercontent.com/goreleaser/get/master/get | sh
+
