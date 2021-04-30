@@ -10,10 +10,8 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+      - -linkmode external -extldflags '-static' -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
     mod_timestamp: '{{ .CommitTimestamp }}'
-    hooks:
-      post: upx {{.Path}}
 archives:
   - files:
       - none*
@@ -25,3 +23,5 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+      - Merge pull request
+      - Update README

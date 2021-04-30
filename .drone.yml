@@ -9,6 +9,9 @@ clone:
 steps:
   - name: lint
     image: golangci/golangci-lint:v1.39.0-alpine
+    volumes:
+      - name: deps
+        path: /go
     commands:
       - apk add libpcap-dev libc-dev linux-headers
       - golangci-lint run -v
@@ -18,10 +21,29 @@ steps:
 
   - name: test & build
     image: golang:1.16-alpine
+    volumes:
+      - name: deps
+        path: /go
     commands:
       - apk add libpcap-dev libc-dev gcc linux-headers
       - go test ./... -v -cover
       - go build -ldflags "-w -s"
+
+  - name: goreleaser-snapshot
+    image: golang:1.16-alpine
+    volumes:
+      - name: deps
+        path: /go
+    commands:
+      - apk add libpcap-dev libc-dev gcc linux-headers curl git
+      - curl -s https://raw.githubusercontent.com/goreleaser/get/master/get > goreleaser.sh
+      - chmod +x goreleaser.sh && ./goreleaser.sh --snapshot
+    when:
+      event: push
+
+volumes:
+  - name: deps
+    temp: {}
 
 trigger:
   branch:
