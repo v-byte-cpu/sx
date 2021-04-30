@@ -67,9 +67,6 @@ trigger:
   event:
     - tag
 
-clone:
-  depth: 1
-
 steps:
   - name: fetch
     image: alpine/git
