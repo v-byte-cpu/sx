@@ -1,0 +1,27 @@
+gomod:
+  proxy: true
+builds:
+  - env:
+      - CGO_ENABLED=1
+    goos:
+      - linux
+    goarch:
+      - amd64
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    hooks:
+      post: upx {{.Path}}
+archives:
+  - files:
+      - none*
+checksum:
+  algorithm: sha256
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'

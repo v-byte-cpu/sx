@@ -25,9 +25,8 @@ import (
 )
 
 var rootCmd = &cobra.Command{
-	Use:     "sx",
-	Short:   "Fast, modern, easy-to-use network scanner",
-	Version: "0.1.0",
+	Use:   "sx",
+	Short: "Fast, modern, easy-to-use network scanner",
 	// Parse common flags
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		if len(cliInterfaceFlag) > 0 {
@@ -187,7 +186,8 @@ func validatePacketScanStdin() (err error) {
 	return
 }
 
-func Main() {
+func Main(version string) {
+	rootCmd.Version = version
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}
