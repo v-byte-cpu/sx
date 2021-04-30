@@ -4,8 +4,10 @@ type: docker
 name: sx-ci
 
 trigger:
-  branch:
-    - master
+  ref:
+    - refs/heads/master
+    - refs/pull/*/head
+    - refs/tags/*
   event:
     - push
     - tag
@@ -62,8 +64,6 @@ depends_on:
   - sx-ci
 
 trigger:
-  branch:
-    - master
   event:
     - tag
 
