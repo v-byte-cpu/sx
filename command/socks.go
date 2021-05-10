@@ -16,6 +16,7 @@ import (
 func init() {
 	socksCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
 	socksCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
+	socksCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
 	rootCmd.AddCommand(socksCmd)
 }
 
@@ -57,6 +58,5 @@ func newSOCKSScanEngine(ctx context.Context) scan.EngineResulter {
 		socks5.WithDialTimeout(2*time.Second),
 		socks5.WithDataTimeout(2*time.Second))
 	results := scan.NewResultChan(ctx, 1000)
-	// TODO custom workerCount
-	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(50))
+	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
 }
