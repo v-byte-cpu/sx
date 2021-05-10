@@ -18,6 +18,7 @@ func init() {
 	dockerCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
 	dockerCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	dockerCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
+	dockerCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
 	rootCmd.AddCommand(dockerCmd)
 }
 
@@ -63,6 +64,5 @@ func newDockerScanEngine(ctx context.Context) scan.EngineResulter {
 	// TODO custom dataTimeout
 	scanner := docker.NewScanner(cliProtoFlag, docker.WithDataTimeout(10*time.Second))
 	results := scan.NewResultChan(ctx, 1000)
-	// TODO custom workerCount
-	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(50))
+	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
 }

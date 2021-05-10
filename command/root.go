@@ -90,6 +90,9 @@ var rootCmd = &cobra.Command{
 				return
 			}
 		}
+		if cliWorkerCountFlag <= 0 {
+			return errors.New("invalid workers count")
+		}
 		return
 	},
 }
@@ -110,6 +113,7 @@ var (
 	cliIPTotalLenFlag   string
 	cliIPProtocolFlag   string
 	cliIPFlagsFlag      string
+	cliWorkerCountFlag  int
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -129,6 +133,8 @@ var (
 const (
 	cliHTTPProtoFlag  = "http"
 	cliHTTPSProtoFlag = "https"
+
+	defaultWorkerCount = 100
 )
 
 var (

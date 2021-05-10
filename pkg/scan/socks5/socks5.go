@@ -2,7 +2,7 @@ package socks5
 
 import (
 	"context"
-	json "encoding/json"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
