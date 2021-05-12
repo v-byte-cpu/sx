@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
@@ -19,6 +18,7 @@ func init() {
 	dockerCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	dockerCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
 	dockerCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
+	dockerCmd.Flags().DurationVarP(&cliTimeoutFlag, "timeout", "t", defaultTimeout, "set request timeout")
 	rootCmd.AddCommand(dockerCmd)
 }
 
@@ -61,8 +61,7 @@ var dockerCmd = &cobra.Command{
 }
 
 func newDockerScanEngine(ctx context.Context) scan.EngineResulter {
-	// TODO custom dataTimeout
-	scanner := docker.NewScanner(cliProtoFlag, docker.WithDataTimeout(10*time.Second))
+	scanner := docker.NewScanner(cliProtoFlag, docker.WithDataTimeout(cliTimeoutFlag))
 	results := scan.NewResultChan(ctx, 1000)
 	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
 }
