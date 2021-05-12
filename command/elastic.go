@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
@@ -19,6 +18,7 @@ func init() {
 	elasticCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	elasticCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
 	elasticCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
+	elasticCmd.Flags().DurationVarP(&cliTimeoutFlag, "timeout", "t", defaultTimeout, "set request timeout")
 	rootCmd.AddCommand(elasticCmd)
 }
 
@@ -61,8 +61,7 @@ var elasticCmd = &cobra.Command{
 }
 
 func newElasticScanEngine(ctx context.Context) scan.EngineResulter {
-	// TODO custom dataTimeout
-	scanner := elastic.NewScanner(cliProtoFlag, elastic.WithDataTimeout(5*time.Second))
+	scanner := elastic.NewScanner(cliProtoFlag, elastic.WithDataTimeout(cliTimeoutFlag))
 	results := scan.NewResultChan(ctx, 1000)
 	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
 }

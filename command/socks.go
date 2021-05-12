@@ -17,6 +17,7 @@ func init() {
 	socksCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
 	socksCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	socksCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
+	socksCmd.Flags().DurationVarP(&cliTimeoutFlag, "timeout", "t", 2*time.Second, "set connect and data timeout")
 	rootCmd.AddCommand(socksCmd)
 }
 
@@ -53,10 +54,9 @@ var socksCmd = &cobra.Command{
 }
 
 func newSOCKSScanEngine(ctx context.Context) scan.EngineResulter {
-	// TODO custom dialTimeout, dataTimeout
 	scanner := socks5.NewScanner(
-		socks5.WithDialTimeout(2*time.Second),
-		socks5.WithDataTimeout(2*time.Second))
+		socks5.WithDialTimeout(cliTimeoutFlag),
+		socks5.WithDataTimeout(cliTimeoutFlag))
 	results := scan.NewResultChan(ctx, 1000)
 	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
 }

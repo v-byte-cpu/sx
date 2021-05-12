@@ -114,6 +114,7 @@ var (
 	cliIPProtocolFlag   string
 	cliIPFlagsFlag      string
 	cliWorkerCountFlag  int
+	cliTimeoutFlag      time.Duration
 
 	cliInterface  *net.Interface
 	cliSrcIP      net.IP
@@ -135,6 +136,7 @@ const (
 	cliHTTPSProtoFlag = "https"
 
 	defaultWorkerCount = 100
+	defaultTimeout     = 5 * time.Second
 )
 
 var (
