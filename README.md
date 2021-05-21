@@ -21,6 +21,7 @@ The goal of this project is to create the fastest network scanner with clean and
 ## 📖 Table of Contents
 
 * [Features](https://github.com/v-byte-cpu/sx#-features)
+* [Install](https://github.com/v-byte-cpu/sx#-install)
 * [Build from source](https://github.com/v-byte-cpu/sx#-build-from-source)
 * [Quick Start](https://github.com/v-byte-cpu/sx#-quick-start)
 * [References](https://github.com/v-byte-cpu/sx#-references)
@@ -43,7 +44,11 @@ The goal of this project is to create the fastest network scanner with clean and
     * **Elasticsearch scan**: Detect open Elasticsearch nodes and pull out cluster information with all index names
   * **JSON output support**: sx is designed specifically for convenient automatic processing of results
 
-## 🛠 Build from source
+## 🛠 Install
+
+The simplest way is to download from [GitHub Releases](https://github.com/v-byte-cpu/sx/releases) and place the executable file in your PATH.
+
+## Build from source
 
 Requirements:
 
