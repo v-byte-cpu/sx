@@ -44,11 +44,11 @@ The goal of this project is to create the fastest network scanner with clean and
     * **Elasticsearch scan**: Detect open Elasticsearch nodes and pull out cluster information with all index names
   * **JSON output support**: sx is designed specifically for convenient automatic processing of results
 
-## 🛠 Install
+## 📦 Install
 
 The simplest way is to download from [GitHub Releases](https://github.com/v-byte-cpu/sx/releases) and place the executable file in your PATH.
 
-## Build from source
+## 🛠 Build from source
 
 Requirements:
 
