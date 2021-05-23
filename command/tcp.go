@@ -14,8 +14,6 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/tcp"
 )
 
-var cliTCPPacketFlags string
-
 const (
 	cliTCPSYNPacketFlag = "syn"
 	cliTCPACKPacketFlag = "ack"
@@ -32,73 +30,90 @@ var (
 	errTCPflag = errors.New("invalid TCP packet flag")
 )
 
-func init() {
-	addPacketScanOptions(tcpCmd)
-	tcpCmd.PersistentFlags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
-	tcpCmd.PersistentFlags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
-	tcpCmd.PersistentFlags().StringVarP(&cliARPCacheFileFlag, "arp-cache", "a", "",
-		strings.Join([]string{"set ARP cache file", "reads from stdin by default"}, "\n"))
-	tcpCmd.Flags().StringVar(&cliTCPPacketFlags, "flags", "", "set TCP flags")
-	rootCmd.AddCommand(tcpCmd)
+func newTCPFlagsCmd() *tcpFlagsCmd {
+	c := &tcpFlagsCmd{}
+
+	cmd := &cobra.Command{
+		Use: "tcp [flags] subnet",
+		Example: strings.Join([]string{
+			"tcp -p 22 192.168.0.1/24", "tcp -p 22-4567 10.0.0.1",
+			"tcp --flags fin,ack -p 22 192.168.0.3"}, "\n"),
+		Short: "Perform TCP scan",
+		Long:  "Perform TCP scan. TCP SYN scan is used by default unless --flags option is specified",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+
+			if err = c.opts.parseRawOptions(); err != nil {
+				return
+			}
+			if len(c.opts.tcpFlags) == 0 {
+				return newTCPSYNCmdOpts(c.opts.tcpCmdOpts).startScan(ctx, args)
+			}
+
+			scanName := tcp.FlagsScanType
+			var conf *scanConfig
+			if conf, err = c.opts.parseScanConfig(scanName, args); err != nil {
+				return
+			}
+
+			var opts []tcp.PacketFillerOption
+			for _, flag := range c.opts.tcpFlags {
+				opts = append(opts, tcpPacketFlagOptions[flag])
+			}
+
+			m := c.opts.newTCPScanMethod(ctx, conf,
+				withTCPScanName(scanName),
+				withTCPPacketFiller(tcp.NewPacketFiller(opts...)),
+				withTCPPacketFilterFunc(tcp.TrueFilter),
+				withTCPPacketFlags(tcp.AllFlags),
+			)
+
+			return startPacketScanEngine(ctx, newPacketScanConfig(
+				withPacketScanMethod(m),
+				withPacketBPFFilter(tcp.BPFFilter),
+				withRateCount(c.opts.rateCount),
+				withRateWindow(c.opts.rateWindow),
+				withPacketEngineConfig(newEngineConfig(
+					withLogger(conf.logger),
+					withScanRange(conf.scanRange),
+					withExitDelay(c.opts.exitDelay),
+				)),
+			))
+		},
+	}
+
+	c.opts.initCliFlags(cmd)
+
+	c.cmd = cmd
+	return c
 }
 
-var tcpCmd = &cobra.Command{
-	Use: "tcp [flags] subnet",
-	Example: strings.Join([]string{
-		"tcp -p 22 192.168.0.1/24", "tcp -p 22-4567 10.0.0.1",
-		"tcp --flags fin,ack -p 22 192.168.0.3"}, "\n"),
-	Short: "Perform TCP scan",
-	Long:  "Perform TCP scan. TCP SYN scan is used by default unless --flags option is specified",
-	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if err = rootCmd.PersistentPreRunE(cmd, args); err != nil {
-			return
-		}
-		if err = validatePacketScanStdin(); err != nil {
-			return
-		}
-		cliDstSubnet, err = parseDstSubnet(args)
+type tcpFlagsCmd struct {
+	cmd  *cobra.Command
+	opts tcpFlagsCmdOpts
+}
+
+type tcpFlagsCmdOpts struct {
+	tcpCmdOpts
+	tcpFlags []string
+
+	rawTCPFlags string
+}
+
+// TODO test
+func (o *tcpFlagsCmdOpts) initCliFlags(cmd *cobra.Command) {
+	o.ipPortScanCmdOpts.initCliFlags(cmd)
+	cmd.Flags().StringVar(&o.rawTCPFlags, "flags", "", "set TCP flags")
+}
+
+// TODO test
+func (o *tcpFlagsCmdOpts) parseRawOptions() (err error) {
+	if err = o.ipPortScanCmdOpts.parseRawOptions(); err != nil {
 		return
-	},
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-		defer cancel()
-
-		if len(cliTCPPacketFlags) == 0 {
-			return startTCPSYNScan(ctx, cliDstSubnet)
-		}
-
-		var tcpFlags []string
-		if tcpFlags, err = parseTCPFlags(cliTCPPacketFlags); err != nil {
-			return err
-		}
-
-		var opts []tcp.PacketFillerOption
-		for _, flag := range tcpFlags {
-			opts = append(opts, tcpPacketFlagOptions[flag])
-		}
-
-		scanName := tcp.FlagsScanType
-		var conf *scanConfig
-		if conf, err = parseScanConfig(scanName, cliDstSubnet); err != nil {
-			return
-		}
-
-		m := newTCPScanMethod(ctx, conf,
-			withTCPScanName(scanName),
-			withTCPPacketFiller(tcp.NewPacketFiller(opts...)),
-			withTCPPacketFilterFunc(tcp.TrueFilter),
-			withTCPPacketFlags(tcp.AllFlags),
-		)
-
-		return startPacketScanEngine(ctx, newPacketScanConfig(
-			withPacketScanMethod(m),
-			withPacketBPFFilter(tcp.BPFFilter),
-			withPacketEngineConfig(newEngineConfig(
-				withLogger(conf.logger),
-				withScanRange(conf.scanRange),
-			)),
-		))
-	},
+	}
+	o.tcpFlags, err = parseTCPFlags(o.rawTCPFlags)
+	return
 }
 
 var tcpPacketFlagOptions = map[string]tcp.PacketFillerOption{
@@ -113,6 +128,7 @@ var tcpPacketFlagOptions = map[string]tcp.PacketFillerOption{
 	cliTCPNSPacketFlag:  tcp.WithNS(),
 }
 
+// TODO lowercase test
 func parseTCPFlags(tcpFlags string) ([]string, error) {
 	if len(tcpFlags) == 0 {
 		return []string{}, nil
@@ -124,6 +140,25 @@ func parseTCPFlags(tcpFlags string) ([]string, error) {
 		}
 	}
 	return flags, nil
+}
+
+type tcpCmdOpts struct {
+	ipPortScanCmdOpts
+}
+
+func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConfigOption) *tcp.ScanMethod {
+	c := &tcpScanConfig{}
+	for _, opt := range opts {
+		opt(c)
+	}
+	reqgen := arp.NewCacheRequestGenerator(o.newIPPortGenerator(), conf.gatewayMAC, conf.cache)
+	pktgen := scan.NewPacketMultiGenerator(c.packetFiller, runtime.NumCPU())
+	psrc := scan.NewPacketSource(reqgen, pktgen)
+	results := scan.NewResultChan(ctx, 1000)
+	return tcp.NewScanMethod(
+		c.scanName, psrc, results,
+		tcp.WithPacketFilterFunc(c.packetFilter),
+		tcp.WithPacketFlagsFunc(c.packetFlags))
 }
 
 type tcpScanConfig struct {
@@ -157,19 +192,4 @@ func withTCPPacketFlags(packetFlags tcp.PacketFlagsFunc) tcpScanConfigOption {
 	return func(c *tcpScanConfig) {
 		c.packetFlags = packetFlags
 	}
-}
-
-func newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConfigOption) *tcp.ScanMethod {
-	c := &tcpScanConfig{}
-	for _, o := range opts {
-		o(c)
-	}
-	reqgen := arp.NewCacheRequestGenerator(newIPPortGenerator(), conf.gatewayMAC, conf.cache)
-	pktgen := scan.NewPacketMultiGenerator(c.packetFiller, runtime.NumCPU())
-	psrc := scan.NewPacketSource(reqgen, pktgen)
-	results := scan.NewResultChan(ctx, 1000)
-	return tcp.NewScanMethod(
-		c.scanName, psrc, results,
-		tcp.WithPacketFilterFunc(c.packetFilter),
-		tcp.WithPacketFlagsFunc(c.packetFlags))
 }

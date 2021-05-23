@@ -157,7 +157,7 @@ func NewScanEngine(reqgen RequestGenerator,
 		reqgen:      reqgen,
 		scanner:     scanner,
 		results:     results,
-		workerCount: 50,
+		workerCount: 100,
 	}
 	for _, o := range opts {
 		o(s)
