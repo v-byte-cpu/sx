@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/command/log"
@@ -13,55 +14,80 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/docker"
 )
 
-func init() {
-	dockerCmd.Flags().StringVarP(&cliPortsFlag, "ports", "p", "", "set ports to scan")
-	dockerCmd.Flags().StringVarP(&cliIPPortFileFlag, "file", "f", "", "set JSONL file with ip/port pairs to scan")
-	dockerCmd.Flags().StringVar(&cliProtoFlag, "proto", "", "set protocol to use, http is used by default; only http or https are valid")
-	dockerCmd.Flags().IntVarP(&cliWorkerCountFlag, "workers", "w", defaultWorkerCount, "set workers count")
-	dockerCmd.Flags().DurationVarP(&cliTimeoutFlag, "timeout", "t", defaultTimeout, "set request timeout")
-	rootCmd.AddCommand(dockerCmd)
+func newDockerCmd() *dockerCmd {
+	c := &dockerCmd{}
+
+	cmd := &cobra.Command{
+		Use: "docker [flags] [subnet]",
+		Example: strings.Join([]string{
+			"docker -p 2375 192.168.0.1/24", "docker -p 2300-2500 10.0.0.1",
+			"docker --proto https -p 2300-2500 192.168.0.3",
+			"docker -f ip_ports_file.jsonl", "docker -p 9200-9300 -f ips_file.jsonl"}, "\n"),
+		Short: "Perform Docker scan",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+
+			if err = c.opts.parseRawOptions(); err != nil {
+				return
+			}
+			scanRange, err := c.opts.parseScanRange(args)
+			if err != nil {
+				return
+			}
+
+			var logger log.Logger
+			if logger, err = c.opts.getLogger(docker.ScanType, os.Stdout); err != nil {
+				return
+			}
+
+			engine := c.opts.newDockerScanEngine(ctx)
+			return startScanEngine(ctx, engine,
+				newEngineConfig(
+					withLogger(logger),
+					withScanRange(scanRange),
+					withExitDelay(c.opts.exitDelay),
+				))
+		},
+	}
+
+	c.opts.initCliFlags(cmd)
+
+	c.cmd = cmd
+	return c
 }
 
-var dockerCmd = &cobra.Command{
-	Use: "docker [flags] [subnet]",
-	Example: strings.Join([]string{
-		"docker -p 2375 192.168.0.1/24", "docker -p 2300-2500 10.0.0.1",
-		"docker --proto https -p 2300-2500 192.168.0.3",
-		"docker -f ip_ports_file.jsonl", "docker -p 9200-9300 -f ips_file.jsonl"}, "\n"),
-	Short: "Perform Docker scan",
-	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(cliProtoFlag) == 0 {
-			cliProtoFlag = cliHTTPProtoFlag
-		}
-		if cliProtoFlag != cliHTTPProtoFlag && cliProtoFlag != cliHTTPSProtoFlag {
-			return errors.New("invalid HTTP proto flag: http or https required")
-		}
-		cliDstSubnet, err = parseDstSubnet(args)
+type dockerCmd struct {
+	cmd  *cobra.Command
+	opts dockerCmdOpts
+}
+
+type dockerCmdOpts struct {
+	genericScanCmdOpts
+	timeout time.Duration
+	proto   string
+}
+
+// TODO test
+func (o *dockerCmdOpts) initCliFlags(cmd *cobra.Command) {
+	o.genericScanCmdOpts.initCliFlags(cmd)
+	cmd.Flags().DurationVarP(&o.timeout, "timeout", "t", defaultTimeout, "set request timeout")
+	cmd.Flags().StringVar(&o.proto, "proto", cliHTTPProtoFlag, "set protocol to use, only http or https are valid")
+}
+
+// TODO test
+func (o *dockerCmdOpts) parseRawOptions() (err error) {
+	if err = o.genericScanCmdOpts.parseRawOptions(); err != nil {
 		return
-	},
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-		defer cancel()
-
-		var logger log.Logger
-		if logger, err = getLogger("docker", os.Stdout); err != nil {
-			return
-		}
-
-		engine := newDockerScanEngine(ctx)
-		return startScanEngine(ctx, engine,
-			newEngineConfig(
-				withLogger(logger),
-				withScanRange(&scan.Range{
-					DstSubnet: cliDstSubnet,
-					Ports:     cliPortRanges,
-				}),
-			))
-	},
+	}
+	if o.proto != cliHTTPProtoFlag && o.proto != cliHTTPSProtoFlag {
+		return errors.New("invalid HTTP proto flag: http or https required")
+	}
+	return
 }
 
-func newDockerScanEngine(ctx context.Context) scan.EngineResulter {
-	scanner := docker.NewScanner(cliProtoFlag, docker.WithDataTimeout(cliTimeoutFlag))
+func (o *dockerCmdOpts) newDockerScanEngine(ctx context.Context) scan.EngineResulter {
+	scanner := docker.NewScanner(o.proto, docker.WithDataTimeout(o.timeout))
 	results := scan.NewResultChan(ctx, 1000)
-	return scan.NewScanEngine(newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(cliWorkerCountFlag))
+	return scan.NewScanEngine(o.newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(o.workers))
 }

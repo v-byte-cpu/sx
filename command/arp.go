@@ -16,67 +16,88 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
-var (
-	cliARPLiveTimeoutFlag string
-	cliARPLiveTimeout     time.Duration
-)
+func newARPCmd() *arpCmd {
+	c := &arpCmd{}
 
-func init() {
-	addPacketScanOptions(arpCmd, withoutGatewayMAC())
-	arpCmd.Flags().StringVar(&cliARPLiveTimeoutFlag, "live", "", "enable live mode")
-	rootCmd.AddCommand(arpCmd)
-}
+	cmd := &cobra.Command{
+		Use:     "arp [flags] subnet",
+		Example: strings.Join([]string{"arp 192.168.0.1/24", "arp 10.0.0.1"}, "\n"),
+		Short:   "Perform ARP scan",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
 
-var arpCmd = &cobra.Command{
-	Use:     "arp [flags] subnet",
-	Example: strings.Join([]string{"arp 192.168.0.1/24", "arp 10.0.0.1"}, "\n"),
-	Short:   "Perform ARP scan",
-	PreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		if len(cliARPLiveTimeoutFlag) > 0 {
-			if cliARPLiveTimeout, err = time.ParseDuration(cliARPLiveTimeoutFlag); err != nil {
+			if len(args) != 1 {
+				return errors.New("requires one ip subnet argument")
+			}
+			dstSubnet, err := ip.ParseIPNet(args[0])
+			if err != nil {
 				return
 			}
-		}
-		if len(args) != 1 {
-			return errors.New("requires one ip subnet argument")
-		}
-		cliDstSubnet, err = ip.ParseIPNet(args[0])
-		return
-	},
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		var r *scan.Range
-		if r, err = getScanRange(cliDstSubnet); err != nil {
-			return err
-		}
 
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-		defer cancel()
+			if err = c.opts.parseRawOptions(); err != nil {
+				return
+			}
+			var r *scan.Range
+			if r, err = c.opts.getScanRange(dstSubnet); err != nil {
+				return err
+			}
+			var logger log.Logger
+			if logger, err = c.opts.getLogger(); err != nil {
+				return err
+			}
 
-		var logger log.Logger
-		if logger, err = getLogger("arp", os.Stdout); err != nil {
-			return err
-		}
-		if cliARPLiveTimeout > 0 {
-			logger = log.NewUniqueLogger(logger)
-		}
+			m := c.opts.newARPScanMethod(ctx)
 
-		m := newARPScanMethod(ctx)
+			return startPacketScanEngine(ctx, newPacketScanConfig(
+				withPacketScanMethod(m),
+				withPacketBPFFilter(arp.BPFFilter),
+				withRateCount(c.opts.rateCount),
+				withRateWindow(c.opts.rateWindow),
+				withPacketEngineConfig(newEngineConfig(
+					withLogger(logger),
+					withScanRange(r),
+					withExitDelay(c.opts.exitDelay),
+				)),
+			))
+		},
+	}
 
-		return startPacketScanEngine(ctx, newPacketScanConfig(
-			withPacketScanMethod(m),
-			withPacketBPFFilter(arp.BPFFilter),
-			withPacketEngineConfig(newEngineConfig(
-				withLogger(logger),
-				withScanRange(r),
-			)),
-		))
-	},
+	c.opts.initCliFlags(cmd)
+
+	c.cmd = cmd
+	return c
 }
 
-func newARPScanMethod(ctx context.Context) *arp.ScanMethod {
+type arpCmd struct {
+	cmd  *cobra.Command
+	opts arpCmdOpts
+}
+
+type arpCmdOpts struct {
+	packetScanCmdOpts
+	liveTimeout time.Duration
+}
+
+func (o *arpCmdOpts) initCliFlags(cmd *cobra.Command) {
+	o.packetScanCmdOpts.initCliFlags(cmd)
+	cmd.Flags().DurationVar(&o.liveTimeout, "live", 0, "enable live mode")
+}
+
+func (o *arpCmdOpts) getLogger() (logger log.Logger, err error) {
+	if logger, err = o.packetScanCmdOpts.getLogger("arp", os.Stdout); err != nil {
+		return
+	}
+	if o.liveTimeout > 0 {
+		logger = log.NewUniqueLogger(logger)
+	}
+	return
+}
+
+func (o *arpCmdOpts) newARPScanMethod(ctx context.Context) *arp.ScanMethod {
 	var reqgen scan.RequestGenerator = scan.NewIPRequestGenerator(scan.NewIPGenerator())
-	if cliARPLiveTimeout > 0 {
-		reqgen = scan.NewLiveRequestGenerator(reqgen, cliARPLiveTimeout)
+	if o.liveTimeout > 0 {
+		reqgen = scan.NewLiveRequestGenerator(reqgen, o.liveTimeout)
 	}
 	pktgen := scan.NewPacketMultiGenerator(arp.NewPacketFiller(), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)

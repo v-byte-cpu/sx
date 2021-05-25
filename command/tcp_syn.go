@@ -2,7 +2,6 @@ package command
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/signal"
 	"strings"
@@ -12,30 +11,52 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/tcp"
 )
 
-func init() {
-	tcpCmd.AddCommand(tcpsynCmd)
+func newTCPSYNCmd() *tcpSYNCmd {
+	c := &tcpSYNCmd{}
+
+	cmd := &cobra.Command{
+		Use:     "syn [flags] subnet",
+		Example: strings.Join([]string{"tcp syn -p 22 192.168.0.1/24", "tcp syn -p 22-4567 10.0.0.1"}, "\n"),
+		Short:   "Perform TCP SYN scan",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+			defer cancel()
+
+			if err = c.opts.parseRawOptions(); err != nil {
+				return
+			}
+			return c.opts.startScan(ctx, args)
+		},
+	}
+
+	c.opts.initCliFlags(cmd)
+
+	c.cmd = cmd
+	return c
 }
 
-var tcpsynCmd = &cobra.Command{
-	Use:     "syn [flags] subnet",
-	Example: strings.Join([]string{"tcp syn -p 22 192.168.0.1/24", "tcp syn -p 22-4567 10.0.0.1"}, "\n"),
-	Short:   "Perform TCP SYN scan",
-	RunE: func(cmd *cobra.Command, args []string) (err error) {
-		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-		defer cancel()
-		return startTCPSYNScan(ctx, cliDstSubnet)
-	},
+type tcpSYNCmd struct {
+	cmd  *cobra.Command
+	opts tcpSYNCmdOpts
 }
 
-func startTCPSYNScan(ctx context.Context, dstSubnet *net.IPNet) (err error) {
+type tcpSYNCmdOpts struct {
+	tcpCmdOpts
+}
+
+func newTCPSYNCmdOpts(opts tcpCmdOpts) *tcpSYNCmdOpts {
+	return &tcpSYNCmdOpts{opts}
+}
+
+func (o *tcpSYNCmdOpts) startScan(ctx context.Context, args []string) (err error) {
 	scanName := tcp.SYNScanType
 
 	var conf *scanConfig
-	if conf, err = parseScanConfig(scanName, dstSubnet); err != nil {
+	if conf, err = o.parseScanConfig(scanName, args); err != nil {
 		return
 	}
 
-	m := newTCPScanMethod(ctx, conf,
+	m := o.newTCPScanMethod(ctx, conf,
 		withTCPScanName(scanName),
 		withTCPPacketFiller(tcp.NewPacketFiller(tcp.WithSYN())),
 		withTCPPacketFilterFunc(func(pkt *layers.TCP) bool {
@@ -48,9 +69,12 @@ func startTCPSYNScan(ctx context.Context, dstSubnet *net.IPNet) (err error) {
 	return startPacketScanEngine(ctx, newPacketScanConfig(
 		withPacketScanMethod(m),
 		withPacketBPFFilter(tcp.SYNACKBPFFilter),
+		withRateCount(o.rateCount),
+		withRateWindow(o.rateWindow),
 		withPacketEngineConfig(newEngineConfig(
 			withLogger(conf.logger),
 			withScanRange(conf.scanRange),
+			withExitDelay(o.exitDelay),
 		)),
 	))
 }
