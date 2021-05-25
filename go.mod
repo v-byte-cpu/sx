@@ -22,9 +22,8 @@ require (
 	github.com/spf13/cobra v1.1.3
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.0
-	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/ratelimit v0.2.0
-	go.uber.org/zap v1.16.0
+	go.uber.org/zap v1.17.0
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf
 	gotest.tools/v3 v3.0.3 // indirect
 )
