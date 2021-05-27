@@ -11,6 +11,30 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestICMPCmdDstSubnetError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "RequiredArg",
+			args: nil,
+		},
+		{
+			name: "InvalidDstSubnet",
+			args: []string{"invalid_ip_address"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newICMPCmd().cmd
+			err := cmd.RunE(cmd, tt.args)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestICMPCmdOptsInitCliFlags(t *testing.T) {
 	t.Parallel()
 	var opts icmpCmdOpts
