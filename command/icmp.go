@@ -79,7 +79,6 @@ type icmpCmdOpts struct {
 	rawICMPPayload string
 }
 
-// TODO test
 func (o *icmpCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.ipScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().Uint8Var(&o.ipTTL, "ttl", 64, "set IP TTL field of generated packet")
@@ -96,7 +95,6 @@ func (o *icmpCmdOpts) initCliFlags(cmd *cobra.Command) {
 		strings.Join([]string{"set byte payload of generated packet", "48 random bytes by default"}, "\n"))
 }
 
-// TODO test
 func (o *icmpCmdOpts) parseRawOptions() (err error) {
 	if err = o.ipScanCmdOpts.parseRawOptions(); err != nil {
 		return
