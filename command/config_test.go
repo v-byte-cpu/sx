@@ -1,13 +1,417 @@
 package command
 
 import (
+	"net"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/google/gopacket/layers"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
+
+func TestPacketScanCmdOptsInitCliFlags(t *testing.T) {
+	t.Parallel()
+	var opts packetScanCmdOpts
+	cmd := &cobra.Command{}
+
+	opts.initCliFlags(cmd)
+	err := cmd.ParseFlags(strings.Split(
+		"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s", " "))
+
+	require.NoError(t, err)
+	require.Equal(t, true, opts.json)
+	require.Equal(t, "eth0", opts.rawInterface)
+	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
+	require.Equal(t, "500/7s", opts.rawRateLimit)
+	require.Equal(t, 10*time.Second, opts.exitDelay)
+}
+
+func TestPacketScanCmdOptsParseRawOptions(t *testing.T) {
+	t.Parallel()
+	opts := &packetScanCmdOpts{
+		rawSrcMAC:    "00:11:22:33:44:55",
+		rawRateLimit: "500/7s",
+	}
+
+	err := opts.parseRawOptions()
+
+	require.NoError(t, err)
+	require.Equal(t, net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, opts.srcMAC)
+	require.Equal(t, 500, opts.rateCount)
+	require.Equal(t, 7*time.Second, opts.rateWindow)
+}
+
+func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
+	t.Parallel()
+	var opts ipScanCmdOpts
+	cmd := &cobra.Command{}
+
+	opts.initCliFlags(cmd)
+	err := cmd.ParseFlags(strings.Split(
+		strings.Join([]string{
+			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s",
+			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache",
+		}, " "), " "))
+
+	require.NoError(t, err)
+	require.Equal(t, true, opts.json)
+	require.Equal(t, "eth0", opts.rawInterface)
+	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
+	require.Equal(t, "500/7s", opts.rawRateLimit)
+	require.Equal(t, 10*time.Second, opts.exitDelay)
+
+	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
+	require.Equal(t, "ip_file.jsonl", opts.ipFile)
+	require.Equal(t, "arp.cache", opts.arpCacheFile)
+}
+
+func TestIPScanCmdOptsParseRawOptions(t *testing.T) {
+	t.Parallel()
+	opts := &ipScanCmdOpts{
+		packetScanCmdOpts: packetScanCmdOpts{
+			rawSrcMAC:    "00:11:22:33:44:55",
+			rawRateLimit: "500/7s",
+		},
+		rawGatewayMAC: "11:22:33:44:55:66",
+	}
+
+	err := opts.parseRawOptions()
+
+	require.NoError(t, err)
+	require.Equal(t, net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, opts.srcMAC)
+	require.Equal(t, 500, opts.rateCount)
+	require.Equal(t, 7*time.Second, opts.rateWindow)
+
+	require.Equal(t, net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}, opts.gatewayMAC)
+}
+
+func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
+	t.Parallel()
+	var opts ipPortScanCmdOpts
+	cmd := &cobra.Command{}
+
+	opts.initCliFlags(cmd)
+	err := cmd.ParseFlags(strings.Split(
+		strings.Join([]string{
+			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s",
+			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache",
+			"-p 23-57,71-2733",
+		}, " "), " "))
+
+	require.NoError(t, err)
+	require.Equal(t, true, opts.json)
+	require.Equal(t, "eth0", opts.rawInterface)
+	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
+	require.Equal(t, "500/7s", opts.rawRateLimit)
+	require.Equal(t, 10*time.Second, opts.exitDelay)
+
+	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
+	require.Equal(t, "ip_file.jsonl", opts.ipFile)
+	require.Equal(t, "arp.cache", opts.arpCacheFile)
+
+	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
+}
+
+func TestIPPortScanCmdOptsParseRawOptions(t *testing.T) {
+	t.Parallel()
+	opts := ipPortScanCmdOpts{
+		ipScanCmdOpts: ipScanCmdOpts{
+			packetScanCmdOpts: packetScanCmdOpts{
+				rawSrcMAC:    "00:11:22:33:44:55",
+				rawRateLimit: "500/7s",
+			},
+			rawGatewayMAC: "11:22:33:44:55:66",
+		},
+		rawPortRanges: "23-57,71-2733",
+	}
+
+	err := opts.parseRawOptions()
+
+	require.NoError(t, err)
+	require.Equal(t, net.HardwareAddr{0x00, 0x11, 0x22, 0x33, 0x44, 0x55}, opts.srcMAC)
+	require.Equal(t, 500, opts.rateCount)
+	require.Equal(t, 7*time.Second, opts.rateWindow)
+
+	require.Equal(t, net.HardwareAddr{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}, opts.gatewayMAC)
+	require.Equal(t, []*scan.PortRange{
+		{StartPort: 23, EndPort: 57},
+		{StartPort: 71, EndPort: 2733}}, opts.portRanges)
+}
+
+func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
+	t.Parallel()
+	var opts genericScanCmdOpts
+	cmd := &cobra.Command{}
+
+	opts.initCliFlags(cmd)
+	err := cmd.ParseFlags(strings.Split(
+		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 --exit-delay 10s", " "))
+
+	require.NoError(t, err)
+	require.Equal(t, true, opts.json)
+	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
+	require.Equal(t, "ip_file.jsonl", opts.ipFile)
+	require.Equal(t, 300, opts.workers)
+	require.Equal(t, 10*time.Second, opts.exitDelay)
+}
+
+func TestGenericScanCmdOptsParseRawOptions(t *testing.T) {
+	t.Parallel()
+	opts := genericScanCmdOpts{
+		rawPortRanges: "23-57,71-2733",
+		workers:       300,
+	}
+
+	err := opts.parseRawOptions()
+
+	require.NoError(t, err)
+	require.Equal(t, []*scan.PortRange{
+		{StartPort: 23, EndPort: 57},
+		{StartPort: 71, EndPort: 2733}}, opts.portRanges)
+}
+
+func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		opts     ipScanCmdOpts
+		expected bool
+	}{
+		{
+			name:     "CacheFromFile",
+			opts:     ipScanCmdOpts{arpCacheFile: "arp.cache"},
+			expected: false,
+		},
+		{
+			name:     "CacheFromStdin",
+			opts:     ipScanCmdOpts{arpCacheFile: ""},
+			expected: true,
+		},
+		{
+			name:     "CacheFromStdinExplicit",
+			opts:     ipScanCmdOpts{arpCacheFile: "-"},
+			expected: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.opts.isARPCacheFromStdin())
+		})
+	}
+}
+
+func TestIPScanCmdOptsValidateStdin(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		opts      ipScanCmdOpts
+		shouldErr bool
+	}{
+		{
+			name: "CacheFromStdinAndNoIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "", ipFile: ""},
+		},
+		{
+			name: "CacheFromStdinAndIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "", ipFile: "ip_file"},
+		},
+		{
+			name:      "CacheFromStdinAndIPFileFromStdin",
+			opts:      ipScanCmdOpts{arpCacheFile: "", ipFile: "-"},
+			shouldErr: true,
+		},
+		{
+			name: "CacheFromStdinExplicitAndNoIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "-", ipFile: ""},
+		},
+		{
+			name: "CacheFromStdinExplicitAndIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "-", ipFile: "ip_file"},
+		},
+		{
+			name:      "CacheFromStdinExplicitAndIPFileFromStdin",
+			opts:      ipScanCmdOpts{arpCacheFile: "-", ipFile: "-"},
+			shouldErr: true,
+		},
+		{
+			name: "CacheFromFileAndNoIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "arp.cache", ipFile: ""},
+		},
+		{
+			name: "CacheFromFileAndIPFile",
+			opts: ipScanCmdOpts{arpCacheFile: "arp.cache", ipFile: "ip_file"},
+		},
+		{
+			name: "CacheFromFileAndIPFileFromStdin",
+			opts: ipScanCmdOpts{arpCacheFile: "arp.cache", ipFile: "-"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.opts.validateStdin()
+			if tt.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func TestIPScanCmdOptsParseDstSubnet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		opts      ipScanCmdOpts
+		args      []string
+		expected  *net.IPNet
+		shouldErr bool
+	}{
+		{
+			name:     "ValidDstHost",
+			opts:     ipScanCmdOpts{},
+			args:     []string{"192.168.0.1"},
+			expected: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+		},
+		{
+			name:     "ValidDstSubnet",
+			opts:     ipScanCmdOpts{},
+			args:     []string{"10.0.0.1/16"},
+			expected: &net.IPNet{IP: net.IPv4(10, 0, 0, 0).To4(), Mask: net.IPv4Mask(255, 255, 0, 0)},
+		},
+		{
+			name:     "IPFile",
+			opts:     ipScanCmdOpts{ipFile: "ip_file"},
+			args:     []string{},
+			expected: nil,
+		},
+		{
+			name:      "NoIPHosts",
+			opts:      ipScanCmdOpts{ipFile: ""},
+			args:      []string{},
+			shouldErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.opts.parseDstSubnet(tt.args)
+			if tt.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGenericScanCmdOptsParseDstSubnet(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		opts      genericScanCmdOpts
+		args      []string
+		expected  *net.IPNet
+		shouldErr bool
+	}{
+		{
+			name:     "ValidDstHost",
+			opts:     genericScanCmdOpts{},
+			args:     []string{"192.168.0.1"},
+			expected: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+		},
+		{
+			name:     "ValidDstSubnet",
+			opts:     genericScanCmdOpts{},
+			args:     []string{"10.0.0.1/16"},
+			expected: &net.IPNet{IP: net.IPv4(10, 0, 0, 0).To4(), Mask: net.IPv4Mask(255, 255, 0, 0)},
+		},
+		{
+			name:     "IPFile",
+			opts:     genericScanCmdOpts{ipFile: "ip_file"},
+			args:     []string{},
+			expected: nil,
+		},
+		{
+			name:      "NoIPHosts",
+			opts:      genericScanCmdOpts{ipFile: ""},
+			args:      []string{},
+			shouldErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.opts.parseDstSubnet(tt.args)
+			if tt.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestGenericScanCmdOptsParseScanRange(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name      string
+		opts      genericScanCmdOpts
+		args      []string
+		expected  *scan.Range
+		shouldErr bool
+	}{
+		{
+			name: "ValidDstHost",
+			opts: genericScanCmdOpts{portRanges: []*scan.PortRange{{StartPort: 22, EndPort: 100}}},
+			args: []string{"192.168.0.1"},
+			expected: &scan.Range{
+				Ports:     []*scan.PortRange{{StartPort: 22, EndPort: 100}},
+				DstSubnet: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+			},
+		},
+		{
+			name: "ValidDstSubnet",
+			opts: genericScanCmdOpts{portRanges: []*scan.PortRange{{StartPort: 22, EndPort: 100}}},
+			args: []string{"10.0.0.1/16"},
+			expected: &scan.Range{
+				Ports:     []*scan.PortRange{{StartPort: 22, EndPort: 100}},
+				DstSubnet: &net.IPNet{IP: net.IPv4(10, 0, 0, 0).To4(), Mask: net.IPv4Mask(255, 255, 0, 0)},
+			},
+		},
+		{
+			name: "IPFile",
+			opts: genericScanCmdOpts{ipFile: "ip_file", portRanges: []*scan.PortRange{{StartPort: 22, EndPort: 100}}},
+			args: []string{},
+			expected: &scan.Range{
+				Ports: []*scan.PortRange{{StartPort: 22, EndPort: 100}},
+			},
+		},
+		{
+			name:      "NoIPHosts",
+			opts:      genericScanCmdOpts{ipFile: ""},
+			args:      []string{},
+			shouldErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tt.opts.parseScanRange(tt.args)
+			if tt.shouldErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
 
 func TestParsePortRangeError(t *testing.T) {
 	t.Parallel()

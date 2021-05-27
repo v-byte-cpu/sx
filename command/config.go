@@ -32,8 +32,10 @@ var (
 	errSrcMAC       = errors.New("invalid source MAC")
 	errSrcInterface = errors.New("invalid source interface")
 	errRateLimit    = errors.New("invalid ratelimit")
-	errStdin        = errors.New("stdin is from a terminal")
+	errTermStdin    = errors.New("stdin is from a terminal")
 	errIPFlags      = errors.New("invalid ip flags")
+	errNoDstIP      = errors.New("requires one ip subnet argument or file with ip/port pairs")
+	errARPStdin     = errors.New("ARP cache and IP file can not be read from stdin at the same time")
 )
 
 type packetScanCmdOpts struct {
@@ -50,7 +52,6 @@ type packetScanCmdOpts struct {
 	rawRateLimit string
 }
 
-// TODO test
 func (o *packetScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.json, "json", false, "enable JSON output")
 	cmd.Flags().StringVarP(&o.rawInterface, "iface", "i", "", "set interface to send/receive packets")
@@ -68,7 +69,6 @@ func (o *packetScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 			"any expression accepted by time.ParseDuration is valid"}, "\n"))
 }
 
-// TODO test
 func (o *packetScanCmdOpts) parseRawOptions() (err error) {
 	if len(o.rawInterface) > 0 {
 		if o.iface, err = net.InterfaceByName(o.rawInterface); err != nil {
@@ -230,18 +230,16 @@ func (o *ipScanCmdOpts) parseScanConfig(scanName string, args []string) (c *scan
 	return
 }
 
-// TODO test
 func (o *ipScanCmdOpts) validateStdin() (err error) {
 	if o.isARPCacheFromStdin() && o.ipFile == "-" {
-		return errors.New("ARP cache and IP file can not be read from stdin at the same time")
+		return errARPStdin
 	}
 	return
 }
 
-// TODO test
 func (o *ipScanCmdOpts) parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
 	if len(args) == 0 && len(o.ipFile) == 0 {
-		return nil, errors.New("requires one ip subnet argument or file with ip/port pairs")
+		return nil, errNoDstIP
 	}
 	if len(args) == 0 {
 		return
@@ -272,13 +270,12 @@ func (o *ipScanCmdOpts) openARPCache() (r io.ReadCloser, err error) {
 	// only data being piped to stdin is valid
 	if (info.Mode() & os.ModeCharDevice) != 0 {
 		// stdin from terminal is not valid
-		return nil, errStdin
+		return nil, errTermStdin
 	}
 	r = io.NopCloser(os.Stdin)
 	return
 }
 
-// TODO test
 func (o *ipScanCmdOpts) isARPCacheFromStdin() bool {
 	return len(o.arpCacheFile) == 0 || o.arpCacheFile == "-"
 }
@@ -307,7 +304,6 @@ func (o *ipPortScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
 }
 
-// TODO test
 func (o *ipPortScanCmdOpts) parseRawOptions() (err error) {
 	if err = o.ipScanCmdOpts.parseRawOptions(); err != nil {
 		return
@@ -356,7 +352,6 @@ type genericScanCmdOpts struct {
 	rawPortRanges string
 }
 
-// TODO test
 func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.json, "json", false, "enable JSON output")
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
@@ -368,7 +363,6 @@ func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 			"any expression accepted by time.ParseDuration is valid"}, "\n"))
 }
 
-// TODO test
 func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 	if len(o.rawPortRanges) > 0 {
 		if o.portRanges, err = parsePortRanges(o.rawPortRanges); err != nil {
@@ -381,7 +375,6 @@ func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-// TODO test
 func (o *genericScanCmdOpts) parseScanRange(args []string) (r *scan.Range, err error) {
 	dstSubnet, err := o.parseDstSubnet(args)
 	r = &scan.Range{
@@ -391,10 +384,9 @@ func (o *genericScanCmdOpts) parseScanRange(args []string) (r *scan.Range, err e
 	return
 }
 
-// TODO test
 func (o *genericScanCmdOpts) parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
 	if len(args) == 0 && len(o.ipFile) == 0 {
-		return nil, errors.New("requires one ip subnet argument or file with ip/port pairs")
+		return nil, errNoDstIP
 	}
 	if len(args) == 0 {
 		return

@@ -101,13 +101,11 @@ type tcpFlagsCmdOpts struct {
 	rawTCPFlags string
 }
 
-// TODO test
 func (o *tcpFlagsCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.ipPortScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().StringVar(&o.rawTCPFlags, "flags", "", "set TCP flags")
 }
 
-// TODO test
 func (o *tcpFlagsCmdOpts) parseRawOptions() (err error) {
 	if err = o.ipPortScanCmdOpts.parseRawOptions(); err != nil {
 		return
@@ -128,18 +126,20 @@ var tcpPacketFlagOptions = map[string]tcp.PacketFillerOption{
 	cliTCPNSPacketFlag:  tcp.WithNS(),
 }
 
-// TODO lowercase test
 func parseTCPFlags(tcpFlags string) ([]string, error) {
 	if len(tcpFlags) == 0 {
 		return []string{}, nil
 	}
 	flags := strings.Split(tcpFlags, ",")
+	result := make([]string, 0, len(flags))
 	for _, flag := range flags {
+		flag = strings.ToLower(flag)
 		if _, ok := tcpPacketFlagOptions[flag]; !ok {
 			return nil, errTCPflag
 		}
+		result = append(result, flag)
 	}
-	return flags, nil
+	return result, nil
 }
 
 type tcpCmdOpts struct {

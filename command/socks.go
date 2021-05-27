@@ -65,7 +65,6 @@ type socksCmdOpts struct {
 	timeout time.Duration
 }
 
-// TODO test
 func (o *socksCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.genericScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().DurationVarP(&o.timeout, "timeout", "t", 2*time.Second, "set connect and data timeout")

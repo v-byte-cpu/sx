@@ -68,14 +68,12 @@ type dockerCmdOpts struct {
 	proto   string
 }
 
-// TODO test
 func (o *dockerCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.genericScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().DurationVarP(&o.timeout, "timeout", "t", defaultTimeout, "set request timeout")
 	cmd.Flags().StringVar(&o.proto, "proto", cliHTTPProtoFlag, "set protocol to use, only http or https are valid")
 }
 
-// TODO test
 func (o *dockerCmdOpts) parseRawOptions() (err error) {
 	if err = o.genericScanCmdOpts.parseRawOptions(); err != nil {
 		return

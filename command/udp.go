@@ -78,7 +78,6 @@ type udpCmdOpts struct {
 	rawUDPPayload string
 }
 
-// TODO test
 func (o *udpCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.ipPortScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().Uint8Var(&o.ipTTL, "ttl", 64, "set IP TTL field of generated packet")
@@ -92,7 +91,6 @@ func (o *udpCmdOpts) initCliFlags(cmd *cobra.Command) {
 		strings.Join([]string{"set byte payload of generated packet", "0 bytes by default"}, "\n"))
 }
 
-// TODO test
 func (o *udpCmdOpts) parseRawOptions() (err error) {
 	if err = o.ipPortScanCmdOpts.parseRawOptions(); err != nil {
 		return

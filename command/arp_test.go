@@ -7,15 +7,16 @@ import (
 )
 
 func TestArpCmdDstSubnetRequiredArg(t *testing.T) {
+	t.Parallel()
 	cmd := newARPCmd().cmd
-	err := cmd.Execute()
+	err := cmd.RunE(cmd, nil)
 	require.Error(t, err)
 	require.Equal(t, "requires one ip subnet argument", err.Error())
 }
 
 func TestArpCmdInvalidDstSubnet(t *testing.T) {
+	t.Parallel()
 	cmd := newARPCmd().cmd
-	cmd.SetArgs([]string{"invalid_ip_address"})
-	err := cmd.Execute()
+	err := cmd.RunE(cmd, []string{"invalid_ip_address"})
 	require.Error(t, err)
 }
