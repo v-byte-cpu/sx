@@ -11,6 +11,36 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
+func TestTCPCmdDstSubnetError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "RequiredArg",
+			args: nil,
+		},
+		{
+			name: "InvalidDstSubnet",
+			args: []string{"invalid_ip_address"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := func(cmd *cobra.Command) {
+				err := cmd.RunE(cmd, tt.args)
+				require.Error(t, err)
+			}
+			f(newTCPFlagsCmd().cmd)
+			f(newTCPSYNCmd().cmd)
+			f(newTCPFINCmd().cmd)
+			f(newTCPNULLCmd().cmd)
+			f(newTCPXmasCmd().cmd)
+		})
+	}
+}
+
 func TestTCPCmdOptsInitCliFlags(t *testing.T) {
 	t.Parallel()
 	var opts tcpFlagsCmdOpts

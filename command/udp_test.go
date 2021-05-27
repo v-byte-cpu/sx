@@ -12,6 +12,30 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
+func TestUDPCmdDstSubnetError(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{
+			name: "RequiredArg",
+			args: nil,
+		},
+		{
+			name: "InvalidDstSubnet",
+			args: []string{"invalid_ip_address"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := newUDPCmd().cmd
+			err := cmd.RunE(cmd, tt.args)
+			require.Error(t, err)
+		})
+	}
+}
+
 func TestUDPCmdOptsInitCliFlags(t *testing.T) {
 	t.Parallel()
 	var opts udpCmdOpts
