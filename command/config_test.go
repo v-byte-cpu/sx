@@ -151,13 +151,14 @@ func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
 
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
-		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 --exit-delay 10s", " "))
+		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s", " "))
 
 	require.NoError(t, err)
 	require.Equal(t, true, opts.json)
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
 	require.Equal(t, 300, opts.workers)
+	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
 }
 
@@ -165,6 +166,7 @@ func TestGenericScanCmdOptsParseRawOptions(t *testing.T) {
 	t.Parallel()
 	opts := genericScanCmdOpts{
 		rawPortRanges: "23-57,71-2733",
+		rawRateLimit:  "500/7s",
 		workers:       300,
 	}
 
@@ -174,6 +176,8 @@ func TestGenericScanCmdOptsParseRawOptions(t *testing.T) {
 	require.Equal(t, []*scan.PortRange{
 		{StartPort: 23, EndPort: 57},
 		{StartPort: 71, EndPort: 2733}}, opts.portRanges)
+	require.Equal(t, 500, opts.rateCount)
+	require.Equal(t, 7*time.Second, opts.rateWindow)
 }
 
 func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {

@@ -86,6 +86,5 @@ func (o *dockerCmdOpts) parseRawOptions() (err error) {
 
 func (o *dockerCmdOpts) newDockerScanEngine(ctx context.Context) scan.EngineResulter {
 	scanner := docker.NewScanner(o.proto, docker.WithDataTimeout(o.timeout))
-	results := scan.NewResultChan(ctx, 1000)
-	return scan.NewScanEngine(o.newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(o.workers))
+	return o.newScanEngine(ctx, scanner)
 }

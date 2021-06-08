@@ -6,6 +6,7 @@ import (
 	"context"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/v-byte-cpu/sx/pkg/packet"
 )
@@ -133,6 +134,25 @@ type Scanner interface {
 	Scan(ctx context.Context, r *Request) (Result, error)
 }
 
+type RateLimiter interface {
+	// Take should block to make sure that the RPS is met.
+	Take() time.Time
+}
+
+type rateLimitScanner struct {
+	Scanner
+	limiter RateLimiter
+}
+
+func NewRateLimitScanner(delegate Scanner, limiter RateLimiter) Scanner {
+	return &rateLimitScanner{Scanner: delegate, limiter: limiter}
+}
+
+func (s *rateLimitScanner) Scan(ctx context.Context, r *Request) (Result, error) {
+	s.limiter.Take()
+	return s.Scanner.Scan(ctx, r)
+}
+
 type GenericEngine struct {
 	reqgen      RequestGenerator
 	scanner     Scanner
@@ -207,7 +227,6 @@ func (e *GenericEngine) worker(ctx context.Context, wg *sync.WaitGroup,
 				writeError(ctx, errc, r.Err)
 				continue
 			}
-			// TODO rate limit
 			result, err := e.scanner.Scan(ctx, r)
 			if err != nil {
 				writeError(ctx, errc, err)

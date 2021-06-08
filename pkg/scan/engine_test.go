@@ -16,6 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
+	"go.uber.org/ratelimit"
 )
 
 func TestMergeErrChanEmptyChannels(t *testing.T) {
@@ -196,6 +197,42 @@ func TestPacketSourceReturnsData(t *testing.T) {
 		result := <-out
 		require.NoError(t, result.Err)
 		require.Equal(t, data.Buf, result.Buf)
+	}()
+	waitDone(t, done)
+}
+
+func TestRateLimitScanner(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		scanner := NewMockScanner(ctrl)
+
+		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+		expectedResult := &mockScanResult{"id1"}
+		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
+			Return(expectedResult, nil).AnyTimes()
+
+		rateScanner := NewRateLimitScanner(scanner,
+			ratelimit.New(2, ratelimit.Per(20*time.Millisecond)))
+		timer := time.After(10 * time.Millisecond)
+		count := 0
+	loop:
+		for {
+			select {
+			case <-timer:
+				break loop
+			default:
+				result, err := rateScanner.Scan(context.Background(), req1)
+				require.NoError(t, err)
+				require.Equal(t, expectedResult, result)
+				count++
+			}
+		}
+		require.LessOrEqual(t, count, 2)
 	}()
 	waitDone(t, done)
 }

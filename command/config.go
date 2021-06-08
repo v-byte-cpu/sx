@@ -1,6 +1,7 @@
 package command
 
 import (
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -16,6 +17,7 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"go.uber.org/ratelimit"
 )
 
 const (
@@ -347,9 +349,12 @@ type genericScanCmdOpts struct {
 	ipFile     string
 	portRanges []*scan.PortRange
 	workers    int
+	rateCount  int
+	rateWindow time.Duration
 	exitDelay  time.Duration
 
 	rawPortRanges string
+	rawRateLimit  string
 }
 
 func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
@@ -357,6 +362,12 @@ func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
 	cmd.Flags().StringVarP(&o.ipFile, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	cmd.Flags().IntVarP(&o.workers, "workers", "w", defaultWorkerCount, "set workers count")
+	cmd.Flags().StringVarP(&o.rawRateLimit, "rate", "r", "",
+		strings.Join([]string{
+			"set rate limit for generated scan requests",
+			`format: "rateCount/rateWindow"`,
+			"where rateCount is a number of scan requests, rateWindow is the time interval",
+			"e.g. 1000/s -- 1000 requests per second", "500/7s -- 500 requests per 7 seconds\n"}, "\n"))
 	cmd.Flags().DurationVar(&o.exitDelay, "exit-delay", defaultExitDelay,
 		strings.Join([]string{
 			"set exit delay to wait for last response",
@@ -366,6 +377,11 @@ func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 	if len(o.rawPortRanges) > 0 {
 		if o.portRanges, err = parsePortRanges(o.rawPortRanges); err != nil {
+			return
+		}
+	}
+	if len(o.rawRateLimit) > 0 {
+		if o.rateCount, o.rateWindow, err = parseRateLimit(o.rawRateLimit); err != nil {
 			return
 		}
 	}
@@ -401,6 +417,15 @@ func (o *genericScanCmdOpts) getLogger(name string, w io.Writer) (logger log.Log
 	}
 	logger, err = log.NewLogger(w, name, opts...)
 	return
+}
+
+func (o *genericScanCmdOpts) newScanEngine(ctx context.Context, scanner scan.Scanner) *scan.GenericEngine {
+	if o.rateCount > 0 {
+		scanner = scan.NewRateLimitScanner(scanner,
+			ratelimit.New(o.rateCount, ratelimit.Per(o.rateWindow)))
+	}
+	results := scan.NewResultChan(ctx, 1000)
+	return scan.NewScanEngine(o.newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(o.workers))
 }
 
 func (o *genericScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator) {
