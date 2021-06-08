@@ -86,6 +86,5 @@ func (o *elasticCmdOpts) parseRawOptions() (err error) {
 
 func (o *elasticCmdOpts) newElasticScanEngine(ctx context.Context) scan.EngineResulter {
 	scanner := elastic.NewScanner(o.proto, elastic.WithDataTimeout(o.timeout))
-	results := scan.NewResultChan(ctx, 1000)
-	return scan.NewScanEngine(o.newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(o.workers))
+	return o.newScanEngine(ctx, scanner)
 }

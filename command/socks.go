@@ -74,6 +74,5 @@ func (o *socksCmdOpts) newSOCKSScanEngine(ctx context.Context) scan.EngineResult
 	scanner := socks5.NewScanner(
 		socks5.WithDialTimeout(o.timeout),
 		socks5.WithDataTimeout(o.timeout))
-	results := scan.NewResultChan(ctx, 1000)
-	return scan.NewScanEngine(o.newIPPortGenerator(), scanner, results, scan.WithScanWorkerCount(o.workers))
+	return o.newScanEngine(ctx, scanner)
 }
