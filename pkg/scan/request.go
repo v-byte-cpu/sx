@@ -317,22 +317,66 @@ func (rg *liveRequestGenerator) GenerateRequests(ctx context.Context, r *Range) 
 		var request *Request
 		var ok bool
 		for {
-			select {
-			case <-ctx.Done():
-				return
-			case request, ok = <-requests:
-			}
-			if ok {
+			if request, ok = readRequest(ctx, requests); ok {
 				writeRequest(ctx, out, request)
 				continue
 			}
-
 			select {
 			case <-ctx.Done():
 				return
 			case <-time.After(rg.rescanTimeout):
 				requests, _ = rg.delegate.GenerateRequests(ctx, r)
 			}
+		}
+	}()
+	return out, nil
+}
+
+func readRequest(ctx context.Context, requests <-chan *Request) (request *Request, ok bool) {
+	select {
+	case <-ctx.Done():
+	case request, ok = <-requests:
+	}
+	return
+}
+
+type IPContainer interface {
+	Contains(ip net.IP) (bool, error)
+}
+
+type filterIPRequestGenerator struct {
+	delegate   RequestGenerator
+	excludeIPs IPContainer
+}
+
+func NewFilterIPRequestGenerator(delegate RequestGenerator, excludeIPs IPContainer) RequestGenerator {
+	return &filterIPRequestGenerator{delegate, excludeIPs}
+}
+
+func (rg *filterIPRequestGenerator) GenerateRequests(ctx context.Context, r *Range) (<-chan *Request, error) {
+	requests, err := rg.delegate.GenerateRequests(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+	out := make(chan *Request, cap(requests))
+	go func() {
+		defer close(out)
+		var request *Request
+		var ok bool
+		for {
+			if request, ok = readRequest(ctx, requests); !ok {
+				return
+			}
+			contains, err := rg.excludeIPs.Contains(request.DstIP)
+			if err != nil {
+				request.Err = err
+				writeRequest(ctx, out, request)
+				continue
+			}
+			if contains {
+				continue
+			}
+			writeRequest(ctx, out, request)
 		}
 	}()
 	return out, nil

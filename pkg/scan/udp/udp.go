@@ -1,5 +1,3 @@
-//go:generate easyjson -output_filename result_easyjson.go udp.go
-
 package udp
 
 import (

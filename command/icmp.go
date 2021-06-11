@@ -119,8 +119,11 @@ func (o *icmpCmdOpts) newICMPScanMethod(ctx context.Context, conf *scanConfig) *
 			return os.Open(o.ipFile)
 		})
 	}
-	reqgen := arp.NewCacheRequestGenerator(
-		scan.NewIPRequestGenerator(ipgen), conf.gatewayMAC, conf.cache)
+	reqgen := scan.NewIPRequestGenerator(ipgen)
+	if o.excludeIPs != nil {
+		reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
+	}
+	reqgen = arp.NewCacheRequestGenerator(reqgen, conf.gatewayMAC, conf.cache)
 	pktgen := scan.NewPacketMultiGenerator(icmp.NewPacketFiller(o.getICMPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
