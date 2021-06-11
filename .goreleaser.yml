@@ -21,7 +21,7 @@ changelog:
   sort: asc
   filters:
     exclude:
-      - '^docs:'
-      - '^test:'
+      - '^(\s)*docs:'
+      - '^(\s)*test:'
       - Merge pull request
-      - Update README
+      - update README
