@@ -12,7 +12,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
-	"github.com/jinzhu/copier"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
@@ -134,7 +133,7 @@ func TestPacketSourceReturnsError(t *testing.T) {
 		reqgen := NewMockRequestGenerator(ctrl)
 		pktgen := NewMockPacketGenerator(ctrl)
 
-		expectedScanRange := &Range{
+		scanRange := &Range{
 			SrcIP:  net.IPv4(192, 168, 0, 1),
 			SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 			Ports: []*PortRange{
@@ -144,15 +143,12 @@ func TestPacketSourceReturnsError(t *testing.T) {
 				},
 			},
 		}
-		var scanRange Range
-		err := copier.Copy(&scanRange, expectedScanRange)
-		require.NoError(t, err)
 
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), expectedScanRange).
+		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), scanRange).
 			Return(nil, errors.New("generate error"))
 
 		ps := NewPacketSource(reqgen, pktgen)
-		out := ps.Packets(context.Background(), &scanRange)
+		out := ps.Packets(context.Background(), scanRange)
 		result := <-out
 		require.Error(t, result.Err)
 	}()
