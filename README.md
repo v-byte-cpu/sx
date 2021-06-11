@@ -337,6 +337,44 @@ For example, to limit the speed to 1 packet per 5 seconds:
 cat arp.cache | sx tcp --rate 1/5s --json -p 22,80,443 192.168.0.171
 ```
 
+### Exclude subnets
+
+Sometimes you need to exclude some ip addresses and subnets from scanning. This can be done with 
+the `--exclude` option. It specifies a file with IPs or subnets in CIDR notation to exclude, one-per line.
+
+For instance, to exclude RFC 1918 addresses, create a file `ips.txt` with the following contents:
+
+```
+10.0.0.0/8
+172.16.0.0/16
+192.168.0.0/16
+```
+
+You can also insert comments and blank lines:
+
+```
+# exclude RFC 1918 addresses
+10.0.0.0/8 # comment 1
+172.16.0.0/12 # comment 2
+192.168.0.0/16 # comment 3
+
+0.0.0.0/8 # used in initialization procedures (RFC 6890)
+
+# exclude RFC 5735 addresses
+127.0.0.0/8 # loopback address
+192.0.0.0/24 # reserved block for IETF protocol assignments
+224.0.0.0/4 # allocated for use in IPv4 multicast address assignments
+240.0.0.0/4 # reserved for future use
+
+# exclude Amazon network
+3.0.0.0/8
+
+# ip addresses are valid as well
+1.1.1.1
+```
+
+and run a scan with `--exclude ips.txt` option.
+
 ### Live LAN TCP SYN scanner
 
 As an example of scan composition, you can combine ARP and TCP SYN scans to create live TCP port scanner that periodically scan whole LAN network.

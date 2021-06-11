@@ -163,3 +163,41 @@ func (mr *MockRequestGeneratorMockRecorder) GenerateRequests(ctx, r interface{})
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GenerateRequests", reflect.TypeOf((*MockRequestGenerator)(nil).GenerateRequests), ctx, r)
 }
+
+// MockIPContainer is a mock of IPContainer interface.
+type MockIPContainer struct {
+	ctrl     *gomock.Controller
+	recorder *MockIPContainerMockRecorder
+}
+
+// MockIPContainerMockRecorder is the mock recorder for MockIPContainer.
+type MockIPContainerMockRecorder struct {
+	mock *MockIPContainer
+}
+
+// NewMockIPContainer creates a new mock instance.
+func NewMockIPContainer(ctrl *gomock.Controller) *MockIPContainer {
+	mock := &MockIPContainer{ctrl: ctrl}
+	mock.recorder = &MockIPContainerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockIPContainer) EXPECT() *MockIPContainerMockRecorder {
+	return m.recorder
+}
+
+// Contains mocks base method.
+func (m *MockIPContainer) Contains(ip net.IP) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Contains", ip)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Contains indicates an expected call of Contains.
+func (mr *MockIPContainerMockRecorder) Contains(ip interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Contains", reflect.TypeOf((*MockIPContainer)(nil).Contains), ip)
+}

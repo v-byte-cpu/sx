@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/yl2chen/cidranger"
 	"go.uber.org/ratelimit"
 )
 
@@ -48,10 +50,12 @@ type packetScanCmdOpts struct {
 	rateCount  int
 	rateWindow time.Duration
 	exitDelay  time.Duration
+	excludeIPs scan.IPContainer
 
-	rawInterface string
-	rawSrcMAC    string
-	rawRateLimit string
+	rawInterface   string
+	rawSrcMAC      string
+	rawRateLimit   string
+	rawExcludeFile string
 }
 
 func (o *packetScanCmdOpts) initCliFlags(cmd *cobra.Command) {
@@ -59,6 +63,10 @@ func (o *packetScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&o.rawInterface, "iface", "i", "", "set interface to send/receive packets")
 	cmd.Flags().IPVar(&o.srcIP, "srcip", nil, "set source IP address for generated packets")
 	cmd.Flags().StringVar(&o.rawSrcMAC, "srcmac", "", "set source MAC address for generated packets")
+	cmd.Flags().StringVar(&o.rawExcludeFile, "exclude", "",
+		strings.Join([]string{
+			"set file with IPs or subnets in CIDR notation to exclude, one-per line.",
+			"It is useful to exclude RFC 1918 addresses, multicast, IANA reserved space, and other IANA special-purpose addresses."}, "\n"))
 	cmd.Flags().StringVarP(&o.rawRateLimit, "rate", "r", "",
 		strings.Join([]string{
 			"set rate limit for generated packets",
@@ -84,6 +92,13 @@ func (o *packetScanCmdOpts) parseRawOptions() (err error) {
 	}
 	if len(o.rawRateLimit) > 0 {
 		if o.rateCount, o.rateWindow, err = parseRateLimit(o.rawRateLimit); err != nil {
+			return
+		}
+	}
+	if len(o.rawExcludeFile) > 0 {
+		if o.excludeIPs, err = parseExcludeFile(func() (io.ReadCloser, error) {
+			return os.Open(o.rawExcludeFile)
+		}); err != nil {
 			return
 		}
 	}
@@ -327,6 +342,11 @@ func (o *ipPortScanCmdOpts) parseScanConfig(scanName string, args []string) (c *
 }
 
 func (o *ipPortScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator) {
+	defer func() {
+		if o.excludeIPs != nil {
+			reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
+		}
+	}()
 	if len(o.ipFile) == 0 {
 		return scan.NewIPPortGenerator(scan.NewIPGenerator(), scan.NewPortGenerator())
 	}
@@ -352,9 +372,11 @@ type genericScanCmdOpts struct {
 	rateCount  int
 	rateWindow time.Duration
 	exitDelay  time.Duration
+	excludeIPs scan.IPContainer
 
-	rawPortRanges string
-	rawRateLimit  string
+	rawPortRanges  string
+	rawRateLimit   string
+	rawExcludeFile string
 }
 
 func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
@@ -362,6 +384,10 @@ func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
 	cmd.Flags().StringVarP(&o.ipFile, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	cmd.Flags().IntVarP(&o.workers, "workers", "w", defaultWorkerCount, "set workers count")
+	cmd.Flags().StringVar(&o.rawExcludeFile, "exclude", "",
+		strings.Join([]string{
+			"set file with IPs or subnets in CIDR notation to exclude, one-per line.",
+			"It is useful to exclude RFC 1918 addresses, multicast, IANA reserved space, and other IANA special-purpose addresses."}, "\n"))
 	cmd.Flags().StringVarP(&o.rawRateLimit, "rate", "r", "",
 		strings.Join([]string{
 			"set rate limit for generated scan requests",
@@ -382,6 +408,13 @@ func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 	}
 	if len(o.rawRateLimit) > 0 {
 		if o.rateCount, o.rateWindow, err = parseRateLimit(o.rawRateLimit); err != nil {
+			return
+		}
+	}
+	if len(o.rawExcludeFile) > 0 {
+		if o.excludeIPs, err = parseExcludeFile(func() (io.ReadCloser, error) {
+			return os.Open(o.rawExcludeFile)
+		}); err != nil {
 			return
 		}
 	}
@@ -429,6 +462,11 @@ func (o *genericScanCmdOpts) newScanEngine(ctx context.Context, scanner scan.Sca
 }
 
 func (o *genericScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator) {
+	defer func() {
+		if o.excludeIPs != nil {
+			reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
+		}
+	}()
 	if len(o.ipFile) == 0 {
 		return scan.NewIPPortGenerator(scan.NewIPGenerator(), scan.NewPortGenerator())
 	}
@@ -523,5 +561,37 @@ func parseIPFlags(inputFlags string) (result uint8, err error) {
 			return 0, errIPFlags
 		}
 	}
+	return
+}
+
+type openFileFunc func() (io.ReadCloser, error)
+
+func parseExcludeFile(openFile openFileFunc) (excludeIPs scan.IPContainer, err error) {
+	input, err := openFile()
+	if err != nil {
+		return
+	}
+	defer input.Close()
+
+	ranger := cidranger.NewPCTrieRanger()
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if comment := strings.Index(line, "#"); comment != -1 {
+			line = line[:comment]
+		}
+		line = strings.Trim(line, " ")
+		if len(line) == 0 {
+			continue
+		}
+		var ipnet *net.IPNet
+		if ipnet, err = ip.ParseIPNet(line); err != nil {
+			return
+		}
+		if err = ranger.Insert(cidranger.NewBasicRangerEntry(*ipnet)); err != nil {
+			return
+		}
+	}
+	excludeIPs = ranger
 	return
 }

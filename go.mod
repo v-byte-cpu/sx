@@ -22,6 +22,7 @@ require (
 	github.com/spf13/cobra v1.1.3
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.0
+	github.com/yl2chen/cidranger v1.0.2
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.17.0
 	golang.org/x/net v0.0.0-20210323141857-08027d57d8cf

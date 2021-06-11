@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -70,6 +71,12 @@ func withDstIP(dstIP net.IP) scanRequestOption {
 func withDstPort(dstPort uint16) scanRequestOption {
 	return func(sr *Request) {
 		sr.DstPort = dstPort
+	}
+}
+
+func withError(err error) scanRequestOption {
+	return func(sr *Request) {
+		sr.Err = err
 	}
 }
 
@@ -804,4 +811,167 @@ loop:
 			require.Fail(t, "test timeout")
 		}
 	}
+}
+
+func TestFilterIPRequestGenerator(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    []*Request
+		filtered []bool
+		expected []interface{}
+	}{
+		{
+			name: "EmptyFilter",
+			input: []*Request{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+			},
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+			},
+		},
+		{
+			name: "OneIPFilter",
+			input: []*Request{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+			},
+			filtered: []bool{true, false},
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+			},
+		},
+		{
+			name: "OneIPFilterMiddle",
+			input: []*Request{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+			},
+			filtered: []bool{false, true, false},
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+			},
+		},
+		{
+			name: "TwoIPFilter",
+			input: []*Request{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+			},
+			filtered: []bool{true, false, true},
+			expected: []interface{}{
+				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+			},
+		},
+	}
+
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				ctrl := gomock.NewController(t)
+				delegate := NewMockRequestGenerator(ctrl)
+
+				input := make(chan *Request, len(tt.input))
+				for _, in := range tt.input {
+					input <- in
+				}
+				close(input)
+				r := newScanRange(
+					withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+				)
+				delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
+					Return(input, nil)
+
+				excludeIPs := NewMockIPContainer(ctrl)
+				var excludeFilters []gomock.Matcher
+				for i, filtered := range tt.filtered {
+					if filtered {
+						excludeIPs.EXPECT().Contains(tt.input[i].DstIP).Return(true, nil)
+						excludeFilters = append(excludeFilters, gomock.Not(gomock.Eq(tt.input[i].DstIP)))
+					}
+				}
+				excludeIPs.EXPECT().Contains(gomock.All(excludeFilters...)).Return(false, nil).AnyTimes()
+
+				reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
+				requests, err := reqgen.GenerateRequests(context.Background(), r)
+
+				require.NoError(t, err)
+				result := chanToSlice(t, chanPairToGeneric(requests), len(tt.expected))
+				require.Equal(t, tt.expected, result)
+			}()
+			waitDone(t, done)
+		})
+	}
+}
+
+func TestFilterIPRequestGeneratorWithGeneratorError(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		delegate := NewMockRequestGenerator(ctrl)
+
+		r := newScanRange(
+			withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+		)
+		delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
+			Return(nil, errors.New("generate error"))
+
+		excludeIPs := NewMockIPContainer(ctrl)
+		reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
+		_, err := reqgen.GenerateRequests(context.Background(), r)
+
+		require.Error(t, err)
+	}()
+	waitDone(t, done)
+}
+
+func TestFilterIPRequestGeneratorWithIPContainerError(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+	go func() {
+		defer close(done)
+
+		ctrl := gomock.NewController(t)
+		delegate := NewMockRequestGenerator(ctrl)
+
+		r := newScanRange(
+			withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+		)
+		input := make(chan *Request, 1)
+		input <- newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4()))
+		close(input)
+		delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
+			Return(input, nil)
+
+		excludeIPs := NewMockIPContainer(ctrl)
+		excludeIPs.EXPECT().Contains(gomock.Any()).Return(false, errors.New("ip container error"))
+
+		reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
+		requests, err := reqgen.GenerateRequests(context.Background(), r)
+
+		require.NoError(t, err)
+		result := chanToSlice(t, chanPairToGeneric(requests), 1)
+		require.Equal(t, []interface{}{
+			newScanRequest(
+				withDstIP(net.IPv4(10, 0, 1, 1).To4()),
+				withError(errors.New("ip container error")))}, result)
+	}()
+	waitDone(t, done)
 }

@@ -1,6 +1,9 @@
 package command
 
 import (
+	"errors"
+	"io"
+	"io/ioutil"
 	"net"
 	"strings"
 	"testing"
@@ -19,7 +22,7 @@ func TestPacketScanCmdOptsInitCliFlags(t *testing.T) {
 
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
-		"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s", " "))
+		"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s --exclude ips.txt", " "))
 
 	require.NoError(t, err)
 	require.Equal(t, true, opts.json)
@@ -28,6 +31,7 @@ func TestPacketScanCmdOptsInitCliFlags(t *testing.T) {
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
+	require.Equal(t, "ips.txt", opts.rawExcludeFile)
 }
 
 func TestPacketScanCmdOptsParseRawOptions(t *testing.T) {
@@ -53,7 +57,7 @@ func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
 		strings.Join([]string{
-			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s",
+			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s --exclude ips.txt",
 			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache",
 		}, " "), " "))
 
@@ -64,6 +68,7 @@ func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
+	require.Equal(t, "ips.txt", opts.rawExcludeFile)
 
 	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
@@ -98,7 +103,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
 		strings.Join([]string{
-			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s",
+			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s --exclude ips.txt",
 			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache",
 			"-p 23-57,71-2733",
 		}, " "), " "))
@@ -110,6 +115,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
+	require.Equal(t, "ips.txt", opts.rawExcludeFile)
 
 	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
@@ -151,7 +157,7 @@ func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
 
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
-		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s", " "))
+		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s --exclude ips.txt", " "))
 
 	require.NoError(t, err)
 	require.Equal(t, true, opts.json)
@@ -160,6 +166,7 @@ func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
 	require.Equal(t, 300, opts.workers)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
+	require.Equal(t, "ips.txt", opts.rawExcludeFile)
 }
 
 func TestGenericScanCmdOptsParseRawOptions(t *testing.T) {
@@ -797,5 +804,135 @@ func TestParseIPFlags(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
 		})
+	}
+}
+
+func TestParseExcludeFileWithInvalidFile(t *testing.T) {
+	t.Parallel()
+	_, err := parseExcludeFile(func() (io.ReadCloser, error) {
+		return nil, errors.New("open file error")
+	})
+	require.Error(t, err)
+}
+
+func TestParseExcludeFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		contains []net.IP
+		excludes []net.IP
+		err      bool
+	}{
+		{
+			name:     "OneIP",
+			input:    "10.0.1.1",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+			excludes: []net.IP{net.IPv4(10, 0, 1, 2)},
+		},
+		{
+			name:  "OneIPSubnet",
+			input: "10.0.1.1/30",
+			contains: []net.IP{
+				net.IPv4(10, 0, 1, 1),
+				net.IPv4(10, 0, 1, 2),
+				net.IPv4(10, 0, 1, 3),
+			},
+			excludes: []net.IP{net.IPv4(10, 0, 1, 4)},
+		},
+		{
+			name:     "TwoIPs",
+			input:    "10.0.1.1\n10.0.2.2",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1), net.IPv4(10, 0, 2, 2)},
+			excludes: []net.IP{net.IPv4(10, 0, 1, 2), net.IPv4(10, 0, 2, 3)},
+		},
+		{
+			name:  "TwoIPSubnets",
+			input: "10.1.0.0/16\n10.3.0.0/16",
+			contains: []net.IP{
+				net.IPv4(10, 1, 1, 1),
+				net.IPv4(10, 1, 2, 2),
+				net.IPv4(10, 3, 3, 3),
+				net.IPv4(10, 3, 5, 5),
+			},
+			excludes: []net.IP{net.IPv4(10, 2, 2, 2), net.IPv4(10, 5, 5, 5)},
+		},
+		{
+			name:  "ParseError",
+			input: "abc",
+			err:   true,
+		},
+		{
+			name:  "ParseErrorAfterOneIP",
+			input: "10.1.0.1/16\nabc",
+			err:   true,
+		},
+		{
+			name:     "WithNewLines",
+			input:    "\n\n10.0.1.1\n\n",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+		{
+			name:     "WithSpaces",
+			input:    "  10.0.1.1  ",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+		{
+			name:     "WithNewLinesAndSpaces",
+			input:    "\n    \n  10.0.1.1\n\n",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+		{
+			name:     "WithComment",
+			input:    "# comment\n10.0.1.1",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+		{
+			name:     "WithSpaceAndComment",
+			input:    " # comment\n10.0.1.1",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+		{
+			name:     "WithCommentOnLine",
+			input:    "10.0.1.1 # comment",
+			contains: []net.IP{net.IPv4(10, 0, 1, 1)},
+		},
+	}
+
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				ips, err := parseExcludeFile(func() (io.ReadCloser, error) {
+					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+				})
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				for _, ip := range tt.contains {
+					ok, err := ips.Contains(ip)
+					require.NoError(t, err)
+					require.True(t, ok, "ip set does not contain ip %s", ip)
+				}
+			}()
+			waitDone(t, done)
+		})
+	}
+}
+
+func waitDone(t *testing.T, done <-chan interface{}) {
+	t.Helper()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		require.Fail(t, "test timeout")
 	}
 }
