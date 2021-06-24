@@ -1,11 +1,13 @@
 package scan
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"io/ioutil"
 	"net"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -296,6 +298,9 @@ func TestIPGenerator(t *testing.T) {
 				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
+				sort.Slice(result, func(i, j int) bool {
+					return bytes.Compare([]byte(result[i].(WrapIP)), []byte(result[j].(WrapIP))) < 1
+				})
 				require.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
@@ -343,7 +348,7 @@ func TestIPPortGenerator(t *testing.T) {
 		{
 			name: "OneIpOnePort",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(32, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 888,
@@ -358,7 +363,7 @@ func TestIPPortGenerator(t *testing.T) {
 		{
 			name: "OneIpTwoPorts",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(32, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 888,
@@ -374,7 +379,7 @@ func TestIPPortGenerator(t *testing.T) {
 		{
 			name: "TwoIpsOnePort",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(31, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 888,
@@ -390,7 +395,7 @@ func TestIPPortGenerator(t *testing.T) {
 		{
 			name: "FourIpsOnePort",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(30, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(30, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 888,
@@ -408,7 +413,7 @@ func TestIPPortGenerator(t *testing.T) {
 		{
 			name: "TwoIpsTwoPorts",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(31, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 888,
@@ -418,15 +423,15 @@ func TestIPPortGenerator(t *testing.T) {
 			),
 			expected: []interface{}{
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4()), withDstPort(889)),
+				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(888)),
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4()), withDstPort(889)),
 			},
 		},
 		{
 			name: "OneIpPortOverflow",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(32, 32)}),
 				withPorts([]*PortRange{
 					{
 						StartPort: 65535,
@@ -457,6 +462,17 @@ func TestIPPortGenerator(t *testing.T) {
 				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
+				sort.Slice(result, func(i, j int) bool {
+					req1 := result[i].(*Request)
+					req2 := result[j].(*Request)
+					switch bytes.Compare([]byte(req1.DstIP), []byte(req2.DstIP)) {
+					case -1:
+						return true
+					case 1:
+						return false
+					}
+					return req1.DstPort < req2.DstPort
+				})
 				require.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
@@ -481,7 +497,7 @@ func TestIPRequestGenerator(t *testing.T) {
 		{
 			name: "OneIP",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(32, 32)}),
 			),
 			expected: []interface{}{
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4())),
@@ -490,7 +506,7 @@ func TestIPRequestGenerator(t *testing.T) {
 		{
 			name: "TwoIPs",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(31, 32)}),
 			),
 			expected: []interface{}{
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4())),
@@ -500,7 +516,7 @@ func TestIPRequestGenerator(t *testing.T) {
 		{
 			name: "FourIPs",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(30, 32)}),
+				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(30, 32)}),
 			),
 			expected: []interface{}{
 				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4())),
@@ -528,6 +544,11 @@ func TestIPRequestGenerator(t *testing.T) {
 				}
 				require.NoError(t, err)
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
+				sort.Slice(result, func(i, j int) bool {
+					return bytes.Compare(
+						[]byte(result[i].(*Request).DstIP),
+						[]byte(result[j].(*Request).DstIP)) < 1
+				})
 				require.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)

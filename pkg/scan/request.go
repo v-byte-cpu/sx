@@ -8,10 +8,9 @@ import (
 	"context"
 	"errors"
 	"io"
+	"math/big"
 	"net"
 	"time"
-
-	"github.com/v-byte-cpu/sx/pkg/ip"
 )
 
 var (
@@ -99,12 +98,31 @@ func (*ipGenerator) IPs(ctx context.Context, r *Range) (<-chan IPGetter, error) 
 	if r.DstSubnet == nil {
 		return nil, ErrSubnet
 	}
+	ipnet := r.DstSubnet
+	ones, bits := ipnet.Mask.Size()
+	it, err := newRangeIterator(1 << (bits - ones))
+	if err != nil {
+		return nil, err
+	}
+
+	baseIP := big.NewInt(0).SetBytes(ipnet.IP.Mask(ipnet.Mask))
+	baseIP.Sub(baseIP, big.NewInt(1))
+
 	out := make(chan IPGetter, 100)
 	go func() {
 		defer close(out)
-		ipnet := r.DstSubnet
-		for ipaddr := ipnet.IP.Mask(ipnet.Mask); ipnet.Contains(ipaddr); ip.Inc(ipaddr) {
-			writeIP(ctx, out, WrapIP(ip.DupIP(ipaddr)))
+		for {
+			i := it.Int()
+			baseIP.Add(baseIP, i)
+			// TODO IPv6
+			ipaddr := baseIP.FillBytes(make([]byte, 4))
+			baseIP.Sub(baseIP, i)
+
+			writeIP(ctx, out, WrapIP(ipaddr))
+
+			if !it.Next() {
+				return
+			}
 		}
 	}()
 	return out, nil
