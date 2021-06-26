@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_request_test.go -source request.go
+//go:generate mockgen -package scan -destination=mock_request_test.go . PortGenerator,IPGenerator,RequestGenerator,IPContainer
 //go:generate easyjson -output_filename request_easyjson.go request.go
 
 package scan
@@ -31,35 +31,65 @@ type Request struct {
 	Err     error
 }
 
+type PortGetter interface {
+	GetPort() (uint16, error)
+}
+
+type WrapPort uint16
+
+func (p WrapPort) GetPort() (uint16, error) {
+	return uint16(p), nil
+}
+
+type portError struct {
+	error
+}
+
+func (err *portError) GetPort() (uint16, error) {
+	return 0, err
+}
+
 type PortGenerator interface {
-	Ports(ctx context.Context, r *Range) (<-chan uint16, error)
+	Ports(ctx context.Context, r *Range) (<-chan PortGetter, error)
 }
 
 func NewPortGenerator() PortGenerator {
 	return &portGenerator{}
 }
 
-// TODO randomizedPortGenerator
 type portGenerator struct{}
 
-func (*portGenerator) Ports(ctx context.Context, r *Range) (<-chan uint16, error) {
+func (*portGenerator) Ports(ctx context.Context, r *Range) (<-chan PortGetter, error) {
 	if err := validatePorts(r.Ports); err != nil {
 		return nil, err
 	}
-	out := make(chan uint16, 100)
+	out := make(chan PortGetter, 100)
 	go func() {
 		defer close(out)
 		for _, portRange := range r.Ports {
-			for port := int(portRange.StartPort); port <= int(portRange.EndPort); port++ {
-				select {
-				case <-ctx.Done():
-					return
-				case out <- uint16(port):
+			it, err := newRangeIterator(int64(portRange.EndPort) - int64(portRange.StartPort) + 1)
+			if err != nil {
+				writePort(ctx, out, &portError{err})
+				continue
+			}
+			basePort := int64(portRange.StartPort) - 1
+			for {
+				writePort(ctx, out, WrapPort(basePort+it.Int().Int64()))
+				if !it.Next() {
+					break
 				}
 			}
 		}
 	}()
 	return out, nil
+}
+
+func writePort(ctx context.Context, out chan<- PortGetter, port PortGetter) {
+	select {
+	case <-ctx.Done():
+		return
+	case out <- port:
+	}
 }
 
 func validatePorts(ports []*PortRange) error {
@@ -153,7 +183,12 @@ func (rg *ipPortGenerator) GenerateRequests(ctx context.Context, r *Range) (<-ch
 	out := make(chan *Request, 100)
 	go func() {
 		defer close(out)
-		for port := range ports {
+		for p := range ports {
+			port, err := p.GetPort()
+			if err != nil {
+				writeRequest(ctx, out, &Request{Err: err})
+				continue
+			}
 			for ipaddr := range ips {
 				dstip, err := ipaddr.GetIP()
 				writeRequest(ctx, out, &Request{
