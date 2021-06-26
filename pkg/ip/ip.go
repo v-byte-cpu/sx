@@ -8,21 +8,6 @@ import (
 
 var ErrInvalidAddr = errors.New("invalid IP subnet/host")
 
-func Inc(ip net.IP) {
-	for j := len(ip) - 1; j >= 0; j-- {
-		ip[j]++
-		if ip[j] > 0 {
-			break
-		}
-	}
-}
-
-func DupIP(ip net.IP) net.IP {
-	dup := make([]byte, 4)
-	copy(dup, ip.To4())
-	return dup
-}
-
 func ParseIPNet(subnet string) (*net.IPNet, error) {
 	_, result, err := net.ParseCIDR(subnet)
 	if err == nil {
