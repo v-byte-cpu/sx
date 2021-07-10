@@ -32,21 +32,21 @@ func newICMPCmd() *icmpCmd {
 			if err = c.opts.parseRawOptions(); err != nil {
 				return
 			}
-			var conf *scanConfig
-			if conf, err = c.opts.parseScanConfig(icmp.ScanType, args); err != nil {
+			if err = c.opts.parseOptions(icmp.ScanType, args); err != nil {
 				return
 			}
 
-			m := c.opts.newICMPScanMethod(ctx, conf)
+			m := c.opts.newICMPScanMethod(ctx)
 
 			return startPacketScanEngine(ctx, newPacketScanConfig(
 				withPacketScanMethod(m),
 				withPacketBPFFilter(icmp.BPFFilter),
 				withRateCount(c.opts.rateCount),
 				withRateWindow(c.opts.rateWindow),
+				withPacketVPNmode(c.opts.vpnMode),
 				withPacketEngineConfig(newEngineConfig(
-					withLogger(conf.logger),
-					withScanRange(conf.scanRange),
+					withLogger(c.opts.logger),
+					withScanRange(c.opts.scanRange),
 					withExitDelay(c.opts.exitDelay),
 				)),
 			))
@@ -112,7 +112,7 @@ func (o *icmpCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-func (o *icmpCmdOpts) newICMPScanMethod(ctx context.Context, conf *scanConfig) *icmp.ScanMethod {
+func (o *icmpCmdOpts) newICMPScanMethod(ctx context.Context) *icmp.ScanMethod {
 	ipgen := scan.NewIPGenerator()
 	if len(o.ipFile) > 0 {
 		ipgen = scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
@@ -123,11 +123,13 @@ func (o *icmpCmdOpts) newICMPScanMethod(ctx context.Context, conf *scanConfig) *
 	if o.excludeIPs != nil {
 		reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
 	}
-	reqgen = arp.NewCacheRequestGenerator(reqgen, conf.gatewayMAC, conf.cache)
+	if o.cache != nil {
+		reqgen = arp.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
+	}
 	pktgen := scan.NewPacketMultiGenerator(icmp.NewPacketFiller(o.getICMPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
-	return icmp.NewScanMethod(psrc, results)
+	return icmp.NewScanMethod(psrc, results, o.vpnMode)
 }
 
 func (o *icmpCmdOpts) getICMPOptions() (opts []icmp.PacketFillerOption) {
@@ -137,7 +139,8 @@ func (o *icmpCmdOpts) getICMPOptions() (opts []icmp.PacketFillerOption) {
 		icmp.WithIPFlags(o.ipFlags),
 		icmp.WithIPTotalLength(o.ipTotalLen),
 		icmp.WithType(o.icmpType),
-		icmp.WithCode(o.icmpCode))
+		icmp.WithCode(o.icmpCode),
+		icmp.WithVPNmode(o.vpnMode))
 
 	if len(o.icmpPayload) > 0 {
 		opts = append(opts, icmp.WithPayload(o.icmpPayload))

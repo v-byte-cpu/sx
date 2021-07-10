@@ -26,14 +26,13 @@ func newTCPNULLCmd() *tcpNULLCmd {
 			}
 
 			scanName := tcp.NULLScanType
-			var conf *scanConfig
-			if conf, err = c.opts.parseScanConfig(scanName, args); err != nil {
+			if err = c.opts.parseOptions(scanName, args); err != nil {
 				return
 			}
 
-			m := c.opts.newTCPScanMethod(ctx, conf,
+			m := c.opts.newTCPScanMethod(ctx,
 				withTCPScanName(scanName),
-				withTCPPacketFiller(tcp.NewPacketFiller()),
+				withTCPPacketFillerOptions(),
 				withTCPPacketFilterFunc(tcp.TrueFilter),
 				withTCPPacketFlags(tcp.AllFlags),
 			)
@@ -43,9 +42,10 @@ func newTCPNULLCmd() *tcpNULLCmd {
 				withPacketBPFFilter(tcp.BPFFilter),
 				withRateCount(c.opts.rateCount),
 				withRateWindow(c.opts.rateWindow),
+				withPacketVPNmode(c.opts.vpnMode),
 				withPacketEngineConfig(newEngineConfig(
-					withLogger(conf.logger),
-					withScanRange(conf.scanRange),
+					withLogger(c.opts.logger),
+					withScanRange(c.opts.scanRange),
 					withExitDelay(c.opts.exitDelay),
 				)),
 			))

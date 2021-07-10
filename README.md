@@ -196,6 +196,14 @@ cat arp.cache | sx tcp syn -p 22 192.168.0.171
 
 `tcp` subcomand is just a shorthand for `tcp syn` subcommand unless `--flags` option is passed, see below.
 
+### VPN interfaces
+
+`sx` supports scanning with virtual network interfaces (wireguard, openvpn, etc.) and in this case it is **not** necessary to use the arp cache, since these interfaces require raw IP packets instead of Ethernet frames as input. For instance, scanning an IP address on a vpn network:
+
+```
+sx tcp 10.1.27.1 -p 80 --json
+```
+
 ### TCP FIN scan
 
 Most network scanners try to interpret results of the scan. For instance they say "this port is closed" instead of "I received a RST". Sometimes they are right. Sometimes not. It's easier for beginners, but when you know what you're doing, you keep on trying to deduce what really happened from the program's interpretation, especially for more advanced scan techniques. 

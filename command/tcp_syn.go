@@ -51,14 +51,13 @@ func newTCPSYNCmdOpts(opts tcpCmdOpts) *tcpSYNCmdOpts {
 func (o *tcpSYNCmdOpts) startScan(ctx context.Context, args []string) (err error) {
 	scanName := tcp.SYNScanType
 
-	var conf *scanConfig
-	if conf, err = o.parseScanConfig(scanName, args); err != nil {
+	if err = o.parseOptions(scanName, args); err != nil {
 		return
 	}
 
-	m := o.newTCPScanMethod(ctx, conf,
+	m := o.newTCPScanMethod(ctx,
 		withTCPScanName(scanName),
-		withTCPPacketFiller(tcp.NewPacketFiller(tcp.WithSYN())),
+		withTCPPacketFillerOptions(tcp.WithSYN()),
 		withTCPPacketFilterFunc(func(pkt *layers.TCP) bool {
 			// port is open
 			return pkt.SYN && pkt.ACK
@@ -71,9 +70,10 @@ func (o *tcpSYNCmdOpts) startScan(ctx context.Context, args []string) (err error
 		withPacketBPFFilter(tcp.SYNACKBPFFilter),
 		withRateCount(o.rateCount),
 		withRateWindow(o.rateWindow),
+		withPacketVPNmode(o.vpnMode),
 		withPacketEngineConfig(newEngineConfig(
-			withLogger(conf.logger),
-			withScanRange(conf.scanRange),
+			withLogger(o.logger),
+			withScanRange(o.scanRange),
 			withExitDelay(o.exitDelay),
 		)),
 	))

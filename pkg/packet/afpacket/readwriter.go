@@ -12,25 +12,30 @@ import (
 )
 
 type Source struct {
-	handle *afp.TPacket
+	handle   *afp.TPacket
+	linkType layers.LinkType
 }
 
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string) (*Source, error) {
+func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
 	handle, err := afp.NewTPacket(afp.SocketRaw, afp.OptInterface(iface))
 	if err != nil {
 		return nil, err
 	}
-	return &Source{handle}, nil
+	linkType := layers.LinkTypeEthernet
+	if vpnMode {
+		linkType = layers.LinkTypeIPv4
+	}
+	return &Source{handle, linkType}, nil
 }
 
 // maxPacketLength is the maximum size of packets to capture in bytes.
 // pcap calls it "snaplen" and default value used in tcpdump is 262144 bytes,
 // that is redundant for most scans, see pcap(3) and tcpdump(1) for more info
 func (s *Source) SetBPFFilter(bpfFilter string, maxPacketLength int) error {
-	pcapBPF, err := pcap.CompileBPFFilter(layers.LinkTypeEthernet, maxPacketLength, bpfFilter)
+	pcapBPF, err := pcap.CompileBPFFilter(s.linkType, maxPacketLength, bpfFilter)
 	if err != nil {
 		return err
 	}

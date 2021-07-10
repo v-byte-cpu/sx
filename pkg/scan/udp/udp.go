@@ -25,8 +25,8 @@ type ScanMethod struct {
 // Assert that udp.ScanMethod conforms to the scan.PacketMethod interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
 
-func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
-	pp := icmp.NewPacketProcessor(ScanType, results)
+func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool) *ScanMethod {
+	pp := icmp.NewPacketProcessor(ScanType, results, vpnMode)
 	return &ScanMethod{
 		PacketSource: psrc,
 		Processor:    pp,
@@ -40,6 +40,7 @@ type PacketFiller struct {
 	proto   layers.IPProtocol
 	flags   layers.IPv4Flag
 	payload []byte
+	vpnMode bool
 }
 
 // Assert that udp.PacketFiller conforms to the scan.PacketFiller interface
@@ -79,6 +80,12 @@ func WithPayload(payload []byte) PacketFillerOption {
 	}
 }
 
+func WithVPNmode(vpnMode bool) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.vpnMode = vpnMode
+	}
+}
+
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	f := &PacketFiller{
 		// typical TTL value for Linux
@@ -93,11 +100,6 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 }
 
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
-	eth := &layers.Ethernet{
-		SrcMAC:       r.SrcMAC,
-		DstMAC:       r.DstMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
 
 	ip := &layers.IPv4{
 		Version: 4,
@@ -129,6 +131,14 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 	opt := gopacket.SerializeOptions{ComputeChecksums: true}
 	if ip.Length == 0 {
 		opt.FixLengths = true
+	}
+	if f.vpnMode {
+		return gopacket.SerializeLayers(packet, opt, ip, udp, gopacket.Payload(f.payload))
+	}
+	eth := &layers.Ethernet{
+		SrcMAC:       r.SrcMAC,
+		DstMAC:       r.DstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
 	}
 	return gopacket.SerializeLayers(packet, opt, eth, ip, udp, gopacket.Payload(f.payload))
 }

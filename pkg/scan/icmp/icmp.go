@@ -44,8 +44,8 @@ type ScanMethod struct {
 // Assert that icmp.ScanMethod conforms to the scan.PacketMethod interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
 
-func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
-	pp := NewPacketProcessor(ScanType, results)
+func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool) *ScanMethod {
+	pp := NewPacketProcessor(ScanType, results, vpnMode)
 	return &ScanMethod{
 		PacketSource: psrc,
 		Processor:    pp,
@@ -64,9 +64,14 @@ type PacketProcessor struct {
 	rcvICMP    layers.ICMPv4
 }
 
-func NewPacketProcessor(scanType string, results scan.ResultChan) *PacketProcessor {
+func NewPacketProcessor(scanType string, results scan.ResultChan, vpnMode bool) *PacketProcessor {
 	p := &PacketProcessor{scanType: scanType, results: results}
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &p.rcvEth, &p.rcvIP, &p.rcvICMP)
+
+	layerType := layers.LayerTypeEthernet
+	if vpnMode {
+		layerType = layers.LayerTypeIPv4
+	}
+	parser := gopacket.NewDecodingLayerParser(layerType, &p.rcvEth, &p.rcvIP, &p.rcvICMP)
 	parser.IgnoreUnsupported = true
 	p.parser = parser
 	return p
@@ -76,12 +81,12 @@ func (p *PacketProcessor) Results() <-chan scan.Result {
 	return p.results.Chan()
 }
 
-func (p *PacketProcessor) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
-	if err := p.parser.DecodeLayers(data, &p.rcvDecoded); err != nil {
-		return err
+func (p *PacketProcessor) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) (err error) {
+	if err = p.parser.DecodeLayers(data, &p.rcvDecoded); err != nil {
+		return
 	}
-	if len(p.rcvDecoded) != 3 {
-		return nil
+	if !validPacket(p.rcvDecoded) {
+		return
 	}
 
 	p.results.Put(&ScanResult{
@@ -93,7 +98,11 @@ func (p *PacketProcessor) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo
 			Code: p.rcvICMP.TypeCode.Code(),
 		},
 	})
-	return nil
+	return
+}
+
+func validPacket(decoded []gopacket.LayerType) bool {
+	return len(decoded) == 3 || (len(decoded) == 2 && decoded[0] == layers.LayerTypeIPv4)
 }
 
 type PacketFiller struct {
@@ -104,6 +113,7 @@ type PacketFiller struct {
 	typ     uint8
 	code    uint8
 	payload []byte
+	vpnMode bool
 }
 
 // Assert that icmp.PacketFiller conforms to the scan.PacketFiller interface
@@ -155,6 +165,12 @@ func WithPayload(payload []byte) PacketFillerOption {
 	}
 }
 
+func WithVPNmode(vpnMode bool) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.vpnMode = vpnMode
+	}
+}
+
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	payload := make([]byte, 48)
 	rand.Read(payload)
@@ -174,11 +190,6 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 }
 
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
-	eth := &layers.Ethernet{
-		SrcMAC:       r.SrcMAC,
-		DstMAC:       r.DstMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
 
 	ip := &layers.IPv4{
 		Version: 4,
@@ -205,6 +216,15 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 	opt := gopacket.SerializeOptions{ComputeChecksums: true}
 	if ip.Length == 0 {
 		opt.FixLengths = true
+	}
+
+	if f.vpnMode {
+		return gopacket.SerializeLayers(packet, opt, ip, icmp, gopacket.Payload(f.payload))
+	}
+	eth := &layers.Ethernet{
+		SrcMAC:       r.SrcMAC,
+		DstMAC:       r.DstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
 	}
 	return gopacket.SerializeLayers(packet, opt, eth, ip, icmp, gopacket.Payload(f.payload))
 }

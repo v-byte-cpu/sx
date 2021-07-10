@@ -33,21 +33,21 @@ func newUDPCmd() *udpCmd {
 			if err = c.opts.parseRawOptions(); err != nil {
 				return
 			}
-			var conf *scanConfig
-			if conf, err = c.opts.parseScanConfig(udp.ScanType, args); err != nil {
+			if err = c.opts.parseOptions(udp.ScanType, args); err != nil {
 				return
 			}
 
-			m := c.opts.newUDPScanMethod(ctx, conf)
+			m := c.opts.newUDPScanMethod(ctx)
 
 			return startPacketScanEngine(ctx, newPacketScanConfig(
 				withPacketScanMethod(m),
 				withPacketBPFFilter(icmp.BPFFilter),
 				withRateCount(c.opts.rateCount),
 				withRateWindow(c.opts.rateWindow),
+				withPacketVPNmode(c.opts.vpnMode),
 				withPacketEngineConfig(newEngineConfig(
-					withLogger(conf.logger),
-					withScanRange(conf.scanRange),
+					withLogger(c.opts.logger),
+					withScanRange(c.opts.scanRange),
 					withExitDelay(c.opts.exitDelay),
 				)),
 			))
@@ -108,12 +108,15 @@ func (o *udpCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-func (o *udpCmdOpts) newUDPScanMethod(ctx context.Context, conf *scanConfig) *udp.ScanMethod {
-	reqgen := arp.NewCacheRequestGenerator(o.newIPPortGenerator(), conf.gatewayMAC, conf.cache)
+func (o *udpCmdOpts) newUDPScanMethod(ctx context.Context) *udp.ScanMethod {
+	reqgen := o.newIPPortGenerator()
+	if o.cache != nil {
+		reqgen = arp.NewCacheRequestGenerator(o.newIPPortGenerator(), o.gatewayMAC, o.cache)
+	}
 	pktgen := scan.NewPacketMultiGenerator(udp.NewPacketFiller(o.getUDPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
-	return udp.NewScanMethod(psrc, results)
+	return udp.NewScanMethod(psrc, results, o.vpnMode)
 }
 
 func (o *udpCmdOpts) getUDPOptions() (opts []udp.PacketFillerOption) {
@@ -121,7 +124,8 @@ func (o *udpCmdOpts) getUDPOptions() (opts []udp.PacketFillerOption) {
 		udp.WithTTL(o.ipTTL),
 		udp.WithIPProtocol(o.ipProtocol),
 		udp.WithIPFlags(o.ipFlags),
-		udp.WithIPTotalLength(o.ipTotalLen))
+		udp.WithIPTotalLength(o.ipTotalLen),
+		udp.WithVPNmode(o.vpnMode))
 
 	if len(o.udpPayload) > 0 {
 		opts = append(opts, udp.WithPayload(o.udpPayload))

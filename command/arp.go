@@ -42,6 +42,9 @@ func newARPCmd() *arpCmd {
 			if r, err = c.opts.getScanRange(dstSubnet); err != nil {
 				return err
 			}
+			if r.SrcMAC == nil {
+				return errSrcMAC
+			}
 			var logger log.Logger
 			if logger, err = c.opts.getLogger(); err != nil {
 				return err
