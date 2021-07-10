@@ -88,6 +88,7 @@ type ScanMethod struct {
 	pktFilter PacketFilterFunc
 	pktFlags  PacketFlagsFunc
 	results   scan.ResultChan
+	vpnMode   bool
 
 	rcvDecoded []gopacket.LayerType
 	rcvEth     layers.Ethernet
@@ -112,6 +113,12 @@ func WithPacketFlagsFunc(pktFlags PacketFlagsFunc) ScanMethodOption {
 	}
 }
 
+func WithScanVPNmode(vpnMode bool) ScanMethodOption {
+	return func(s *ScanMethod) {
+		s.vpnMode = vpnMode
+	}
+}
+
 func NewScanMethod(scanType string, psrc scan.PacketSource,
 	results scan.ResultChan, opts ...ScanMethodOption) *ScanMethod {
 	sm := &ScanMethod{
@@ -121,14 +128,18 @@ func NewScanMethod(scanType string, psrc scan.PacketSource,
 		pktFilter:    TrueFilter,
 		pktFlags:     AllFlags,
 	}
-	parser := gopacket.NewDecodingLayerParser(layers.LayerTypeEthernet, &sm.rcvEth, &sm.rcvIP, &sm.rcvTCP)
-	parser.IgnoreUnsupported = true
-	sm.parser = parser
-
 	// options pattern
 	for _, o := range opts {
 		o(sm)
 	}
+
+	layerType := layers.LayerTypeEthernet
+	if sm.vpnMode {
+		layerType = layers.LayerTypeIPv4
+	}
+	parser := gopacket.NewDecodingLayerParser(layerType, &sm.rcvEth, &sm.rcvIP, &sm.rcvTCP)
+	parser.IgnoreUnsupported = true
+	sm.parser = parser
 	return sm
 }
 
@@ -136,12 +147,12 @@ func (s *ScanMethod) Results() <-chan scan.Result {
 	return s.results.Chan()
 }
 
-func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) error {
-	if err := s.parser.DecodeLayers(data, &s.rcvDecoded); err != nil {
-		return err
+func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) (err error) {
+	if err = s.parser.DecodeLayers(data, &s.rcvDecoded); err != nil {
+		return
 	}
-	if len(s.rcvDecoded) != 3 {
-		return nil
+	if !validPacket(s.rcvDecoded) {
+		return
 	}
 
 	if s.pktFilter(&s.rcvTCP) {
@@ -152,7 +163,11 @@ func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) err
 			Flags:    s.pktFlags(&s.rcvTCP),
 		})
 	}
-	return nil
+	return
+}
+
+func validPacket(decoded []gopacket.LayerType) bool {
+	return len(decoded) == 3 || (len(decoded) == 2 && decoded[0] == layers.LayerTypeIPv4)
 }
 
 type PacketFiller struct {
@@ -165,6 +180,8 @@ type PacketFiller struct {
 	ECE bool
 	CWR bool
 	NS  bool
+
+	vpnMode bool
 }
 
 // Assert that tcp.PacketFiller conforms to the scan.PacketFiller interface
@@ -226,6 +243,12 @@ func WithNS() PacketFillerOption {
 	}
 }
 
+func WithFillerVPNmode(vpnMode bool) PacketFillerOption {
+	return func(f *PacketFiller) {
+		f.vpnMode = vpnMode
+	}
+}
+
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	f := &PacketFiller{}
 	for _, o := range opts {
@@ -235,11 +258,6 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 }
 
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
-	eth := &layers.Ethernet{
-		SrcMAC:       r.SrcMAC,
-		DstMAC:       r.DstMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
 
 	ip := &layers.IPv4{
 		Version: 4,
@@ -253,7 +271,6 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		SrcIP:    r.SrcIP,
 		DstIP:    r.DstIP,
 	}
-
 	tcp := &layers.TCP{
 		// emulate Linux default ephemeral ports range: 32768 60999
 		// cat /proc/sys/net/ipv4/ip_local_port_range
@@ -289,9 +306,16 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		},
 	}
 	if err = tcp.SetNetworkLayerForChecksum(ip); err != nil {
-		return err
+		return
 	}
-
 	opt := gopacket.SerializeOptions{FixLengths: true, ComputeChecksums: true}
+	if f.vpnMode {
+		return gopacket.SerializeLayers(packet, opt, ip, tcp)
+	}
+	eth := &layers.Ethernet{
+		SrcMAC:       r.SrcMAC,
+		DstMAC:       r.DstMAC,
+		EthernetType: layers.EthernetTypeIPv4,
+	}
 	return gopacket.SerializeLayers(packet, opt, eth, ip, tcp)
 }

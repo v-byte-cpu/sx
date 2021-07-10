@@ -125,9 +125,6 @@ func (o *packetScanCmdOpts) getScanRange(dstSubnet *net.IPNet) (*scan.Range, err
 	if o.srcMAC != nil {
 		srcMAC = o.srcMAC
 	}
-	if srcMAC == nil {
-		return nil, errSrcMAC
-	}
 
 	return &scan.Range{
 		Interface: iface,
@@ -178,6 +175,11 @@ type ipScanCmdOpts struct {
 	ipFile       string
 	arpCacheFile string
 	gatewayMAC   net.HardwareAddr
+	vpnMode      bool
+
+	logger    log.Logger
+	scanRange *scan.Range
+	cache     *arp.Cache
 
 	rawGatewayMAC string
 }
@@ -202,52 +204,42 @@ func (o *ipScanCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-type scanConfig struct {
-	logger     log.Logger
-	scanRange  *scan.Range
-	cache      *arp.Cache
-	gatewayMAC net.HardwareAddr
-}
-
-func (o *ipScanCmdOpts) parseScanConfig(scanName string, args []string) (c *scanConfig, err error) {
-	if err = o.validateStdin(); err != nil {
-		return
-	}
+func (o *ipScanCmdOpts) parseOptions(scanName string, args []string) (err error) {
 
 	dstSubnet, err := o.parseDstSubnet(args)
 	if err != nil {
 		return
 	}
-	var r *scan.Range
-	if r, err = o.getScanRange(dstSubnet); err != nil {
+	if o.scanRange, err = o.getScanRange(dstSubnet); err != nil {
+		return
+	}
+	if o.scanRange.SrcMAC == nil {
+		o.vpnMode = true
+	}
+
+	if o.logger, err = o.getLogger(scanName, os.Stdout); err != nil {
 		return
 	}
 
-	var logger log.Logger
-	if logger, err = o.getLogger(scanName, os.Stdout); err != nil {
+	// disable arp cache parsing for vpn mode
+	if o.vpnMode {
+		return
+	}
+	if err = o.validateARPStdin(); err != nil {
 		return
 	}
 
-	var cache *arp.Cache
-	if cache, err = o.parseARPCache(); err != nil {
+	if o.cache, err = o.parseARPCache(); err != nil {
 		return
 	}
 
-	var gatewayMAC net.HardwareAddr
-	if gatewayMAC, err = o.getGatewayMAC(r.Interface, cache); err != nil {
+	if o.gatewayMAC, err = o.getGatewayMAC(o.scanRange.Interface, o.cache); err != nil {
 		return
-	}
-
-	c = &scanConfig{
-		logger:     logger,
-		scanRange:  r,
-		cache:      cache,
-		gatewayMAC: gatewayMAC,
 	}
 	return
 }
 
-func (o *ipScanCmdOpts) validateStdin() (err error) {
+func (o *ipScanCmdOpts) validateARPStdin() (err error) {
 	if o.isARPCacheFromStdin() && o.ipFile == "-" {
 		return errARPStdin
 	}
@@ -333,11 +325,11 @@ func (o *ipPortScanCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-func (o *ipPortScanCmdOpts) parseScanConfig(scanName string, args []string) (c *scanConfig, err error) {
-	if c, err = o.ipScanCmdOpts.parseScanConfig(scanName, args); err != nil {
+func (o *ipPortScanCmdOpts) parseOptions(scanName string, args []string) (err error) {
+	if err = o.ipScanCmdOpts.parseOptions(scanName, args); err != nil {
 		return
 	}
-	c.scanRange.Ports = o.portRanges
+	o.scanRange.Ports = o.portRanges
 	return
 }
 

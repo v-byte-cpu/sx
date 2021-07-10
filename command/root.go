@@ -94,6 +94,7 @@ type packetScanConfig struct {
 	bpfFilter  bpfFilterFunc
 	rateCount  int
 	rateWindow time.Duration
+	vpnMode    bool
 }
 
 type packetScanConfigOption func(c *packetScanConfig)
@@ -128,6 +129,12 @@ func withRateWindow(rateWindow time.Duration) packetScanConfigOption {
 	}
 }
 
+func withPacketVPNmode(vpnMode bool) packetScanConfigOption {
+	return func(c *packetScanConfig) {
+		c.vpnMode = vpnMode
+	}
+}
+
 func newPacketScanConfig(opts ...packetScanConfigOption) *packetScanConfig {
 	c := &packetScanConfig{}
 	for _, o := range opts {
@@ -140,7 +147,7 @@ func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 	r := conf.scanRange
 
 	// setup network interface to read/write packets
-	ps, err := afpacket.NewPacketSource(r.Interface.Name)
+	ps, err := afpacket.NewPacketSource(r.Interface.Name, conf.vpnMode)
 	if err != nil {
 		return err
 	}

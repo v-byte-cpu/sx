@@ -26,14 +26,13 @@ func newTCPFINCmd() *tcpFINCmd {
 			}
 
 			scanName := tcp.FINScanType
-			var conf *scanConfig
-			if conf, err = c.opts.parseScanConfig(scanName, args); err != nil {
+			if err = c.opts.parseOptions(scanName, args); err != nil {
 				return
 			}
 
-			m := c.opts.newTCPScanMethod(ctx, conf,
+			m := c.opts.newTCPScanMethod(ctx,
 				withTCPScanName(scanName),
-				withTCPPacketFiller(tcp.NewPacketFiller(tcp.WithFIN())),
+				withTCPPacketFillerOptions(tcp.WithFIN()),
 				withTCPPacketFilterFunc(tcp.TrueFilter),
 				withTCPPacketFlags(tcp.AllFlags),
 			)
@@ -43,9 +42,10 @@ func newTCPFINCmd() *tcpFINCmd {
 				withPacketBPFFilter(tcp.BPFFilter),
 				withRateCount(c.opts.rateCount),
 				withRateWindow(c.opts.rateWindow),
+				withPacketVPNmode(c.opts.vpnMode),
 				withPacketEngineConfig(newEngineConfig(
-					withLogger(conf.logger),
-					withScanRange(conf.scanRange),
+					withLogger(c.opts.logger),
+					withScanRange(c.opts.scanRange),
 					withExitDelay(c.opts.exitDelay),
 				)),
 			))

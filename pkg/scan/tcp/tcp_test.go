@@ -15,7 +15,7 @@ import (
 	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 )
 
-func TestPacketFiller(t *testing.T) {
+func TestPacketFillerEthernet(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -127,7 +127,116 @@ func TestPacketFiller(t *testing.T) {
 	}
 }
 
-func TestProcessPacketData(t *testing.T) {
+func TestPacketFillerIPv4(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name   string
+		filler *PacketFiller
+		SYN    bool
+		ACK    bool
+		FIN    bool
+		RST    bool
+		PSH    bool
+		URG    bool
+		ECE    bool
+		CWR    bool
+		NS     bool
+	}{
+		{
+			name:   "SYN",
+			filler: NewPacketFiller(WithSYN(), WithFillerVPNmode(true)),
+			SYN:    true,
+		},
+		{
+			name:   "ACK",
+			filler: NewPacketFiller(WithACK(), WithFillerVPNmode(true)),
+			ACK:    true,
+		},
+		{
+			name:   "FIN",
+			filler: NewPacketFiller(WithFIN(), WithFillerVPNmode(true)),
+			FIN:    true,
+		},
+		{
+			name:   "RST",
+			filler: NewPacketFiller(WithRST(), WithFillerVPNmode(true)),
+			RST:    true,
+		},
+		{
+			name:   "PSH",
+			filler: NewPacketFiller(WithPSH(), WithFillerVPNmode(true)),
+			PSH:    true,
+		},
+		{
+			name:   "URG",
+			filler: NewPacketFiller(WithURG(), WithFillerVPNmode(true)),
+			URG:    true,
+		},
+		{
+			name:   "ECE",
+			filler: NewPacketFiller(WithECE(), WithFillerVPNmode(true)),
+			ECE:    true,
+		},
+		{
+			name:   "CWR",
+			filler: NewPacketFiller(WithCWR(), WithFillerVPNmode(true)),
+			CWR:    true,
+		},
+		{
+			name:   "NS",
+			filler: NewPacketFiller(WithNS(), WithFillerVPNmode(true)),
+			NS:     true,
+		},
+	}
+
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			packet := gopacket.NewSerializeBuffer()
+			err := tt.filler.Fill(packet, &scan.Request{
+				SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
+				DstIP:   net.IPv4(192, 168, 0, 2).To4(),
+				SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+				DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
+				DstPort: 4567,
+			})
+			require.NoError(t, err)
+
+			resultPacket := gopacket.NewPacket(packet.Bytes(), layers.LayerTypeIPv4, gopacket.Default)
+
+			ethLayer := resultPacket.Layer(layers.LayerTypeEthernet)
+			require.Nil(t, ethLayer, "ethernet layer is not empty")
+
+			ipLayer := resultPacket.Layer(layers.LayerTypeIPv4)
+			require.NotNil(t, ipLayer, "ip layer is empty")
+			ip := ipLayer.(*layers.IPv4)
+			require.Equal(t, net.IPv4(192, 168, 0, 3).To4(), ip.SrcIP.To4())
+			require.Equal(t, net.IPv4(192, 168, 0, 2).To4(), ip.DstIP.To4())
+
+			tcpLayer := resultPacket.Layer(layers.LayerTypeTCP)
+			require.NotNil(t, tcpLayer, "tcp layer is empty")
+			tcp := tcpLayer.(*layers.TCP)
+			require.GreaterOrEqual(t, tcp.SrcPort, uint16(32768))
+			require.LessOrEqual(t, tcp.SrcPort, uint16(60999))
+			require.Equal(t, uint16(4567), uint16(tcp.DstPort))
+
+			require.Equal(t, tt.SYN, tcp.SYN)
+			require.Equal(t, tt.ACK, tcp.ACK)
+			require.Equal(t, tt.FIN, tcp.FIN)
+			require.Equal(t, tt.RST, tcp.RST)
+			require.Equal(t, tt.PSH, tcp.PSH)
+			require.Equal(t, tt.URG, tcp.URG)
+			require.Equal(t, tt.ECE, tcp.ECE)
+			require.Equal(t, tt.CWR, tcp.CWR)
+			require.Equal(t, tt.NS, tcp.NS)
+		})
+	}
+}
+
+func TestProcessPacketDataEthernet(t *testing.T) {
 	t.Parallel()
 
 	done := make(chan interface{})
@@ -173,6 +282,72 @@ func TestProcessPacketData(t *testing.T) {
 			ComputeChecksums: true,
 		}
 		err = gopacket.SerializeLayers(packet, opt, eth, ip, tcp)
+		require.NoError(t, err)
+
+		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
+		require.NoError(t, err)
+
+		result, ok := <-sm.Results()
+		if !ok {
+			require.FailNow(t, "results chan is empty")
+		}
+		tcpResult := result.(*ScanResult)
+		assert.Equal(t, SYNScanType, tcpResult.ScanType)
+		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), tcpResult.IP)
+		assert.Equal(t, uint16(22), tcpResult.Port)
+
+		cancel()
+		_, ok = <-sm.Results()
+		require.False(t, ok, "results chan is not closed")
+	}()
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("test timeout")
+	}
+}
+
+func TestProcessPacketDataIPv4(t *testing.T) {
+	t.Parallel()
+
+	done := make(chan interface{})
+
+	go func() {
+		defer close(done)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		results := scan.NewResultChan(ctx, 1000)
+		sm := NewScanMethod(SYNScanType, nil, results, WithScanVPNmode(true))
+
+		// generate packet data
+		packet := gopacket.NewSerializeBuffer()
+
+		ip := &layers.IPv4{
+			Version:  4,
+			Id:       12345,
+			Flags:    layers.IPv4DontFragment,
+			TTL:      64,
+			Protocol: layers.IPProtocolTCP,
+			SrcIP:    net.IPv4(192, 168, 0, 2).To4(),
+			DstIP:    net.IPv4(192, 168, 0, 3).To4(),
+		}
+
+		tcp := &layers.TCP{
+			SrcPort: layers.TCPPort(22),
+			DstPort: layers.TCPPort(45678),
+			Seq:     1234567,
+			SYN:     true,
+			ACK:     true,
+		}
+		err := tcp.SetNetworkLayerForChecksum(ip)
+		require.NoError(t, err)
+
+		opt := gopacket.SerializeOptions{
+			FixLengths:       true,
+			ComputeChecksums: true,
+		}
+		err = gopacket.SerializeLayers(packet, opt, ip, tcp)
 		require.NoError(t, err)
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})

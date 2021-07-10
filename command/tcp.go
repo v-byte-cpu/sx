@@ -52,8 +52,7 @@ func newTCPFlagsCmd() *tcpFlagsCmd {
 			}
 
 			scanName := tcp.FlagsScanType
-			var conf *scanConfig
-			if conf, err = c.opts.parseScanConfig(scanName, args); err != nil {
+			if err = c.opts.parseOptions(scanName, args); err != nil {
 				return
 			}
 
@@ -62,9 +61,9 @@ func newTCPFlagsCmd() *tcpFlagsCmd {
 				opts = append(opts, tcpPacketFlagOptions[flag])
 			}
 
-			m := c.opts.newTCPScanMethod(ctx, conf,
+			m := c.opts.newTCPScanMethod(ctx,
 				withTCPScanName(scanName),
-				withTCPPacketFiller(tcp.NewPacketFiller(opts...)),
+				withTCPPacketFillerOptions(opts...),
 				withTCPPacketFilterFunc(tcp.TrueFilter),
 				withTCPPacketFlags(tcp.AllFlags),
 			)
@@ -74,9 +73,10 @@ func newTCPFlagsCmd() *tcpFlagsCmd {
 				withPacketBPFFilter(tcp.BPFFilter),
 				withRateCount(c.opts.rateCount),
 				withRateWindow(c.opts.rateWindow),
+				withPacketVPNmode(c.opts.vpnMode),
 				withPacketEngineConfig(newEngineConfig(
-					withLogger(conf.logger),
-					withScanRange(conf.scanRange),
+					withLogger(c.opts.logger),
+					withScanRange(c.opts.scanRange),
 					withExitDelay(c.opts.exitDelay),
 				)),
 			))
@@ -146,26 +146,31 @@ type tcpCmdOpts struct {
 	ipPortScanCmdOpts
 }
 
-func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, conf *scanConfig, opts ...tcpScanConfigOption) *tcp.ScanMethod {
+func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, opts ...tcpScanConfigOption) *tcp.ScanMethod {
 	c := &tcpScanConfig{}
 	for _, opt := range opts {
 		opt(c)
 	}
-	reqgen := arp.NewCacheRequestGenerator(o.newIPPortGenerator(), conf.gatewayMAC, conf.cache)
-	pktgen := scan.NewPacketMultiGenerator(c.packetFiller, runtime.NumCPU())
+	reqgen := o.newIPPortGenerator()
+	if o.cache != nil {
+		reqgen = arp.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
+	}
+	c.packetFillerOpts = append(c.packetFillerOpts, tcp.WithFillerVPNmode(o.vpnMode))
+	pktgen := scan.NewPacketMultiGenerator(tcp.NewPacketFiller(c.packetFillerOpts...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
 	return tcp.NewScanMethod(
 		c.scanName, psrc, results,
 		tcp.WithPacketFilterFunc(c.packetFilter),
-		tcp.WithPacketFlagsFunc(c.packetFlags))
+		tcp.WithPacketFlagsFunc(c.packetFlags),
+		tcp.WithScanVPNmode(o.vpnMode))
 }
 
 type tcpScanConfig struct {
-	scanName     string
-	packetFiller scan.PacketFiller
-	packetFilter tcp.PacketFilterFunc
-	packetFlags  tcp.PacketFlagsFunc
+	scanName         string
+	packetFillerOpts []tcp.PacketFillerOption
+	packetFilter     tcp.PacketFilterFunc
+	packetFlags      tcp.PacketFlagsFunc
 }
 
 type tcpScanConfigOption func(c *tcpScanConfig)
@@ -176,9 +181,9 @@ func withTCPScanName(scanName string) tcpScanConfigOption {
 	}
 }
 
-func withTCPPacketFiller(filler scan.PacketFiller) tcpScanConfigOption {
+func withTCPPacketFillerOptions(opts ...tcp.PacketFillerOption) tcpScanConfigOption {
 	return func(c *tcpScanConfig) {
-		c.packetFiller = filler
+		c.packetFillerOpts = opts
 	}
 }
 

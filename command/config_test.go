@@ -217,7 +217,7 @@ func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {
 	}
 }
 
-func TestIPScanCmdOptsValidateStdin(t *testing.T) {
+func TestIPScanCmdOptsValidateARPStdin(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -265,7 +265,7 @@ func TestIPScanCmdOptsValidateStdin(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.opts.validateStdin()
+			err := tt.opts.validateARPStdin()
 			if tt.shouldErr {
 				require.Error(t, err)
 			} else {
