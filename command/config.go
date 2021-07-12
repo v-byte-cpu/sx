@@ -32,14 +32,14 @@ const (
 )
 
 var (
-	errSrcIP        = errors.New("invalid source IP")
-	errSrcMAC       = errors.New("invalid source MAC")
-	errSrcInterface = errors.New("invalid source interface")
-	errRateLimit    = errors.New("invalid ratelimit")
-	errTermStdin    = errors.New("stdin is from a terminal")
-	errIPFlags      = errors.New("invalid ip flags")
-	errNoDstIP      = errors.New("requires one ip subnet argument or file with ip/port pairs")
-	errARPStdin     = errors.New("ARP cache and IP file can not be read from stdin at the same time")
+	errSrcIP         = errors.New("invalid source IP")
+	errSrcMAC        = errors.New("invalid source MAC")
+	errSrcInterface  = errors.New("invalid source interface")
+	errRateLimit     = errors.New("invalid ratelimit")
+	errARPCacheStdin = errors.New("ARP cache is expected from file or stdin pipe")
+	errIPFlags       = errors.New("invalid ip flags")
+	errNoDstIP       = errors.New("requires one ip subnet argument or file with ip/port pairs")
+	errARPStdin      = errors.New("ARP cache and IP file can not be read from stdin at the same time")
 )
 
 type packetScanCmdOpts struct {
@@ -279,7 +279,7 @@ func (o *ipScanCmdOpts) openARPCache() (r io.ReadCloser, err error) {
 	// only data being piped to stdin is valid
 	if (info.Mode() & os.ModeCharDevice) != 0 {
 		// stdin from terminal is not valid
-		return nil, errTermStdin
+		return nil, errARPCacheStdin
 	}
 	r = io.NopCloser(os.Stdin)
 	return
