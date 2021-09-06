@@ -18,7 +18,7 @@ clone:
 
 steps:
   - name: lint
-    image: golangci/golangci-lint:v1.42.0-alpine
+    image: golangci/golangci-lint:v1.42.1-alpine
     volumes:
       - name: deps
         path: /go
