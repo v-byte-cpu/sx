@@ -23,7 +23,7 @@ require (
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yl2chen/cidranger v1.0.2
 	go.uber.org/ratelimit v0.2.0
-	go.uber.org/zap v1.19.0
+	go.uber.org/zap v1.19.1
 	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
 	gotest.tools/v3 v3.0.3 // indirect
 )
