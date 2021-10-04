@@ -13,7 +13,7 @@ require (
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/mailru/easyjson v0.7.7
-	github.com/moby/moby v20.10.7+incompatible
+	github.com/moby/moby v20.10.9+incompatible
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
