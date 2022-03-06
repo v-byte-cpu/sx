@@ -18,12 +18,12 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
-	github.com/spf13/cobra v1.1.3
+	github.com/spf13/cobra v1.3.0
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yl2chen/cidranger v1.0.2
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.19.0
-	golang.org/x/net v0.0.0-20210405180319-a5a99cb37ef4
+	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
 	gotest.tools/v3 v3.0.3 // indirect
 )
