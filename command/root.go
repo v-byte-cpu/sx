@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"fmt"
 	"math/rand"
 	"os"
 	"sync"
@@ -54,7 +55,7 @@ type bpfFilterFunc func(r *scan.Range) (filter string, maxPacketLength int)
 
 type engineConfig struct {
 	logger    log.Logger
-	scanRange *scan.Range
+	scanRange scan.Range
 	exitDelay time.Duration
 }
 
@@ -68,7 +69,7 @@ func withLogger(logger log.Logger) engineConfigOption {
 
 func withScanRange(r *scan.Range) engineConfigOption {
 	return func(c *engineConfig) {
-		c.scanRange = r
+		c.scanRange = *r
 	}
 }
 
@@ -89,7 +90,7 @@ func newEngineConfig(opts ...engineConfigOption) *engineConfig {
 }
 
 type packetScanConfig struct {
-	*engineConfig
+	engineConfig
 	scanMethod scan.PacketMethod
 	bpfFilter  bpfFilterFunc
 	rateCount  int
@@ -101,7 +102,7 @@ type packetScanConfigOption func(c *packetScanConfig)
 
 func withPacketEngineConfig(conf *engineConfig) packetScanConfigOption {
 	return func(c *packetScanConfig) {
-		c.engineConfig = conf
+		c.engineConfig = *conf
 	}
 }
 
@@ -143,8 +144,25 @@ func newPacketScanConfig(opts ...packetScanConfigOption) *packetScanConfig {
 	return c
 }
 
+func startPortScanEngine(ctx context.Context, conf *packetScanConfig) error {
+	// BPF filter doesn't accept large list of port ranges
+	chunkSize := 200
+	for i := 0; i < len(conf.scanRange.Ports); i += chunkSize {
+		end := i + chunkSize
+		if end > len(conf.scanRange.Ports) {
+			end = len(conf.scanRange.Ports)
+		}
+		newConf := *conf
+		newConf.scanRange.Ports = conf.scanRange.Ports[i:end]
+		if err := startPacketScanEngine(ctx, &newConf); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
-	r := conf.scanRange
+	r := &conf.scanRange
 
 	// setup network interface to read/write packets
 	ps, err := afpacket.NewPacketSource(r.Interface.Name, conf.vpnMode)
@@ -154,7 +172,7 @@ func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 	defer ps.Close()
 	err = ps.SetBPFFilter(conf.bpfFilter(r))
 	if err != nil {
-		return err
+		return fmt.Errorf("BPFFilter: %w", err)
 	}
 	var rw packet.ReadWriter = ps
 	// setup rate limit for sending packets
@@ -163,7 +181,7 @@ func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 			ratelimit.New(conf.rateCount, ratelimit.Per(conf.rateWindow)))
 	}
 	engine := scan.SetupPacketEngine(rw, conf.scanMethod)
-	return startScanEngine(ctx, engine, conf.engineConfig)
+	return startScanEngine(ctx, engine, &conf.engineConfig)
 }
 
 func startScanEngine(ctx context.Context, engine scan.EngineResulter, conf *engineConfig) error {
@@ -181,7 +199,7 @@ func startScanEngine(ctx context.Context, engine scan.EngineResulter, conf *engi
 	}()
 
 	// start scan
-	done, errc := engine.Start(ctx, conf.scanRange)
+	done, errc := engine.Start(ctx, &conf.scanRange)
 	go func() {
 		defer cancel()
 		<-done

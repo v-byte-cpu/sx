@@ -104,7 +104,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 	err := cmd.ParseFlags(strings.Split(
 		strings.Join([]string{
 			"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s --exclude ips.txt",
-			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache",
+			"--gwmac 11:22:33:44:55:66 -f ip_file.jsonl -a arp.cache --ports-file ports.txt",
 			"-p 23-57,71-2733",
 		}, " "), " "))
 
@@ -122,6 +122,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 	require.Equal(t, "arp.cache", opts.arpCacheFile)
 
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
+	require.Equal(t, "ports.txt", opts.portFile)
 }
 
 func TestIPPortScanCmdOptsParseRawOptions(t *testing.T) {
@@ -157,11 +158,12 @@ func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
 
 	opts.initCliFlags(cmd)
 	err := cmd.ParseFlags(strings.Split(
-		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s --exclude ips.txt", " "))
+		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s --exclude ips.txt --ports-file ports.txt", " "))
 
 	require.NoError(t, err)
 	require.Equal(t, true, opts.json)
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
+	require.Equal(t, "ports.txt", opts.portFile)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
 	require.Equal(t, 300, opts.workers)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
@@ -922,6 +924,131 @@ func TestParseExcludeFile(t *testing.T) {
 					require.NoError(t, err)
 					require.True(t, ok, "ip set does not contain ip %s", ip)
 				}
+			}()
+			waitDone(t, done)
+		})
+	}
+}
+
+func TestParsePortsFileWithInvalidFile(t *testing.T) {
+	t.Parallel()
+	_, err := parsePortsFile(func() (io.ReadCloser, error) {
+		return nil, errors.New("open file error")
+	})
+	require.Error(t, err)
+}
+
+func TestParsePortsFile(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    string
+		expected []*scan.PortRange
+		err      bool
+	}{
+		{
+			name:  "OnePort",
+			input: "80",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "OnePortRange",
+			input: "80-443",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 443},
+			},
+		},
+		{
+			name:  "TwoPorts",
+			input: "80\n443",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+				{StartPort: 443, EndPort: 443},
+			},
+		},
+		{
+			name:  "TwoPortRanges",
+			input: "80-443\n1123-1679",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 443},
+				{StartPort: 1123, EndPort: 1679},
+			},
+		},
+		{
+			name:  "ParseError",
+			input: "abc",
+			err:   true,
+		},
+		{
+			name:  "ParseErrorAfterOnePort",
+			input: "80\nabc",
+			err:   true,
+		},
+		{
+			name:  "WithNewLines",
+			input: "\n\n80\n\n",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "WithSpaces",
+			input: "  80  ",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "WithNewLinesAndSpaces",
+			input: "\n    \n  80\n\n",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "WithComment",
+			input: "# comment\n80",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "WithSpaceAndComment",
+			input: " # comment\n80",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+		{
+			name:  "WithCommentOnLine",
+			input: "80 # comment",
+			expected: []*scan.PortRange{
+				{StartPort: 80, EndPort: 80},
+			},
+		},
+	}
+
+	for _, vtt := range tests {
+		tt := vtt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			done := make(chan interface{})
+			go func() {
+				defer close(done)
+
+				ports, err := parsePortsFile(func() (io.ReadCloser, error) {
+					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+				})
+				if tt.err {
+					require.Error(t, err)
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, ports)
 			}()
 			waitDone(t, done)
 		})
