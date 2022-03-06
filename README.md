@@ -161,6 +161,8 @@ or individual ports:
 cat arp.cache | sx tcp -p 22,443 192.168.0.171
 ```
 
+or use the `--ports-file` option to specify a file with ports or port ranges to scan, one per line.
+
 scan ip/port pairs from a file with JSON output:
 
 ```

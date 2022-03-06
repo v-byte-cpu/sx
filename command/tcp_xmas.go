@@ -37,7 +37,7 @@ func newTCPXmasCmd() *tcpXmasCmd {
 				withTCPPacketFlags(tcp.AllFlags),
 			)
 
-			return startPacketScanEngine(ctx, newPacketScanConfig(
+			return startPortScanEngine(ctx, newPacketScanConfig(
 				withPacketScanMethod(m),
 				withPacketBPFFilter(tcp.BPFFilter),
 				withRateCount(c.opts.rateCount),

@@ -303,6 +303,7 @@ func (o *ipScanCmdOpts) getGatewayMAC(iface *net.Interface, cache *arp.Cache) (m
 
 type ipPortScanCmdOpts struct {
 	ipScanCmdOpts
+	portFile   string
 	portRanges []*scan.PortRange
 
 	rawPortRanges string
@@ -311,6 +312,7 @@ type ipPortScanCmdOpts struct {
 func (o *ipPortScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.ipScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
+	cmd.Flags().StringVar(&o.portFile, "ports-file", "", "set file with ports or port ranges to scan, one-per line")
 }
 
 func (o *ipPortScanCmdOpts) parseRawOptions() (err error) {
@@ -321,6 +323,15 @@ func (o *ipPortScanCmdOpts) parseRawOptions() (err error) {
 		if o.portRanges, err = parsePortRanges(o.rawPortRanges); err != nil {
 			return
 		}
+	}
+	if len(o.portFile) > 0 {
+		portRanges, err := parsePortsFile(func() (io.ReadCloser, error) {
+			return os.Open(o.portFile)
+		})
+		if err != nil {
+			return err
+		}
+		o.portRanges = append(o.portRanges, portRanges...)
 	}
 	return
 }
@@ -359,6 +370,7 @@ func (o *ipPortScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator) 
 type genericScanCmdOpts struct {
 	json       bool
 	ipFile     string
+	portFile   string
 	portRanges []*scan.PortRange
 	workers    int
 	rateCount  int
@@ -374,6 +386,7 @@ type genericScanCmdOpts struct {
 func (o *genericScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.json, "json", false, "enable JSON output")
 	cmd.Flags().StringVarP(&o.rawPortRanges, "ports", "p", "", "set ports to scan")
+	cmd.Flags().StringVar(&o.portFile, "ports-file", "", "set file with ports or port ranges to scan, one-per line")
 	cmd.Flags().StringVarP(&o.ipFile, "file", "f", "", "set JSONL file with ip/port pairs to scan")
 	cmd.Flags().IntVarP(&o.workers, "workers", "w", defaultWorkerCount, "set workers count")
 	cmd.Flags().StringVar(&o.rawExcludeFile, "exclude", "",
@@ -398,6 +411,16 @@ func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 			return
 		}
 	}
+	if len(o.portFile) > 0 {
+		portRanges, err := parsePortsFile(func() (io.ReadCloser, error) {
+			return os.Open(o.portFile)
+		})
+		if err != nil {
+			return err
+		}
+		o.portRanges = append(o.portRanges, portRanges...)
+	}
+	// TODO parsePortsFile
 	if len(o.rawRateLimit) > 0 {
 		if o.rateCount, o.rateWindow, err = parseRateLimit(o.rawRateLimit); err != nil {
 			return
@@ -585,5 +608,30 @@ func parseExcludeFile(openFile openFileFunc) (excludeIPs scan.IPContainer, err e
 		}
 	}
 	excludeIPs = ranger
+	return
+}
+
+func parsePortsFile(openFile openFileFunc) (result []*scan.PortRange, err error) {
+	input, err := openFile()
+	if err != nil {
+		return
+	}
+	defer input.Close()
+	scanner := bufio.NewScanner(input)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if comment := strings.Index(line, "#"); comment != -1 {
+			line = line[:comment]
+		}
+		line = strings.Trim(line, " ")
+		if len(line) == 0 {
+			continue
+		}
+		ports, err := parsePortRange(line)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, ports)
+	}
 	return
 }

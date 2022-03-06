@@ -65,7 +65,7 @@ func (o *tcpSYNCmdOpts) startScan(ctx context.Context, args []string) (err error
 		withTCPPacketFlags(tcp.EmptyFlags),
 	)
 
-	return startPacketScanEngine(ctx, newPacketScanConfig(
+	return startPortScanEngine(ctx, newPacketScanConfig(
 		withPacketScanMethod(m),
 		withPacketBPFFilter(tcp.SYNACKBPFFilter),
 		withRateCount(o.rateCount),

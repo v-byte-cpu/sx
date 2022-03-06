@@ -39,7 +39,7 @@ func newUDPCmd() *udpCmd {
 
 			m := c.opts.newUDPScanMethod(ctx)
 
-			return startPacketScanEngine(ctx, newPacketScanConfig(
+			return startPortScanEngine(ctx, newPacketScanConfig(
 				withPacketScanMethod(m),
 				withPacketBPFFilter(icmp.BPFFilter),
 				withRateCount(c.opts.rateCount),
