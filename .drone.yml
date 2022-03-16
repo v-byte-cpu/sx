@@ -30,7 +30,7 @@ steps:
       - revive -config .revive.toml -formatter friendly ./...
 
   - name: test & build
-    image: golang:1.17-alpine
+    image: golang:1.18-alpine
     volumes:
       - name: deps
         path: /go
@@ -40,7 +40,7 @@ steps:
       - go build -ldflags "-w -s"
 
   - name: goreleaser-snapshot
-    image: golang:1.17-alpine
+    image: golang:1.18-alpine
     volumes:
       - name: deps
         path: /go
@@ -74,7 +74,7 @@ steps:
       - git fetch --tags
 
   - name: release
-    image: golang:1.17-alpine
+    image: golang:1.18-alpine
     environment:
       GITHUB_TOKEN:
         from_secret: github_token
