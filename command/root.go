@@ -165,7 +165,7 @@ func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 	r := &conf.scanRange
 
 	// setup network interface to read/write packets
-	ps, err := afpacket.NewPacketSource(r.Interface.Name, conf.vpnMode)
+	ps, err := afpacket.NewPacketSource(r.Interface.Name)
 	if err != nil {
 		return err
 	}
