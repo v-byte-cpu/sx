@@ -9,6 +9,7 @@ require (
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/docker/go-connections v0.4.0 // indirect
 	github.com/docker/go-units v0.4.0 // indirect
+	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/gorilla/mux v1.8.0 // indirect
@@ -18,12 +19,14 @@ require (
 	github.com/morikuni/aec v1.0.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.0.1 // indirect
-	github.com/spf13/cobra v1.3.0
+	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.7.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yl2chen/cidranger v1.0.2
 	go.uber.org/ratelimit v0.2.0
 	go.uber.org/zap v1.19.0
 	golang.org/x/net v0.0.0-20210813160813-60bc85c4be6d
+	golang.org/x/time v0.0.0-20220609170525-579cf78fd858 // indirect
+	google.golang.org/grpc v1.47.0 // indirect
 	gotest.tools/v3 v3.0.3 // indirect
 )
