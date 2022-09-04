@@ -3,7 +3,6 @@ package command
 import (
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"strings"
 	"testing"
@@ -912,7 +911,7 @@ func TestParseExcludeFile(t *testing.T) {
 				defer close(done)
 
 				ips, err := parseExcludeFile(func() (io.ReadCloser, error) {
-					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				if tt.err {
 					require.Error(t, err)
@@ -1041,7 +1040,7 @@ func TestParsePortsFile(t *testing.T) {
 				defer close(done)
 
 				ports, err := parsePortsFile(func() (io.ReadCloser, error) {
-					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				if tt.err {
 					require.Error(t, err)
