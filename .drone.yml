@@ -18,19 +18,18 @@ clone:
 
 steps:
   - name: lint
-    image: golangci/golangci-lint:v1.42.0-alpine
+    image: golangci/golangci-lint:v1.49-alpine
     volumes:
       - name: deps
         path: /go
     commands:
       - apk add libpcap-dev libc-dev linux-headers
       - golangci-lint run -v
-      # go 1.16 install doesn't modify go.mod and go.sum
-      - go install github.com/mgechev/revive@v1.0.3
+      - go install github.com/mgechev/revive@v1.2.3
       - revive -config .revive.toml -formatter friendly ./...
 
   - name: test & build
-    image: golang:1.17-alpine
+    image: golang:1.19-alpine
     volumes:
       - name: deps
         path: /go
@@ -40,7 +39,7 @@ steps:
       - go build -ldflags "-w -s"
 
   - name: goreleaser-snapshot
-    image: golang:1.17-alpine
+    image: golang:1.19-alpine
     volumes:
       - name: deps
         path: /go
@@ -74,11 +73,10 @@ steps:
       - git fetch --tags
 
   - name: release
-    image: golang:1.17-alpine
+    image: golang:1.19-alpine
     environment:
       GITHUB_TOKEN:
         from_secret: github_token
     commands:
       - apk add libpcap-dev libc-dev gcc linux-headers curl git
       - curl -s https://raw.githubusercontent.com/goreleaser/get/master/get | sh
-

@@ -4,6 +4,7 @@ package packet
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net"
 	"strings"
@@ -35,11 +36,11 @@ type receiver struct {
 }
 
 func isTemporaryError(err error) bool {
-	if err == syscall.EAGAIN {
+	if errors.Is(err, syscall.EAGAIN) || errors.Is(err, syscall.ECONNRESET) {
 		return true
 	}
 	nerr, ok := err.(net.Error)
-	return ok && nerr.Temporary()
+	return ok && nerr.Timeout()
 }
 
 func isUnrecoverableError(err error) bool {

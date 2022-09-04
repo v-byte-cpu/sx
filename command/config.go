@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"net"
 	"os"
 	"strconv"
@@ -360,7 +359,7 @@ func (o *ipPortScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator) 
 	}
 	ipgen := scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
 		if o.ipFile == "-" {
-			return ioutil.NopCloser(os.Stdin), nil
+			return io.NopCloser(os.Stdin), nil
 		}
 		return os.Open(o.ipFile)
 	})
@@ -492,7 +491,7 @@ func (o *genericScanCmdOpts) newIPPortGenerator() (reqgen scan.RequestGenerator)
 	}
 	ipgen := scan.NewFileIPGenerator(func() (io.ReadCloser, error) {
 		if o.ipFile == "-" {
-			return ioutil.NopCloser(os.Stdin), nil
+			return io.NopCloser(os.Stdin), nil
 		}
 		return os.Open(o.ipFile)
 	})

@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"io/ioutil"
 	"math/big"
 	"net"
 	"sort"
@@ -349,7 +348,7 @@ func TestIPGenerator(t *testing.T) {
 				require.NoError(t, err)
 				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
 				sort.Slice(result, func(i, j int) bool {
-					return bytes.Compare([]byte(result[i].(WrapIP)), []byte(result[j].(WrapIP))) < 1
+					return bytes.Compare(result[i].(WrapIP), result[j].(WrapIP)) < 1
 				})
 				require.Equal(t, tt.expected, result)
 			}()
@@ -613,8 +612,8 @@ func TestIPRequestGenerator(t *testing.T) {
 				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
 				sort.Slice(result, func(i, j int) bool {
 					return bytes.Compare(
-						[]byte(result[i].(*Request).DstIP),
-						[]byte(result[j].(*Request).DstIP)) < 1
+						result[i].(*Request).DstIP,
+						result[j].(*Request).DstIP) < 1
 				})
 				require.Equal(t, tt.expected, result)
 			}()
@@ -760,7 +759,7 @@ func TestFileIPPortGenerator(t *testing.T) {
 				defer close(done)
 
 				reqgen := NewFileIPPortGenerator(func() (io.ReadCloser, error) {
-					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				if tt.scanRange == nil {
 					tt.scanRange = &Range{}
@@ -866,7 +865,7 @@ func TestFileIPGenerator(t *testing.T) {
 				defer close(done)
 
 				ipgen := NewFileIPGenerator(func() (io.ReadCloser, error) {
-					return ioutil.NopCloser(strings.NewReader(tt.input)), nil
+					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				ips, err := ipgen.IPs(context.Background(), &Range{})
 				require.NoError(t, err)
