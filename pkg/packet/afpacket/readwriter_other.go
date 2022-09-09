@@ -1,3 +1,4 @@
+//go:build !linux
 // +build !linux
 
 package afpacket
@@ -16,7 +17,7 @@ type Source struct{}
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string) (*Source, error) {
+func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
 	return nil, ErrOS
 }
 
