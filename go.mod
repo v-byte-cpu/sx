@@ -3,7 +3,7 @@ module github.com/v-byte-cpu/sx
 go 1.19
 
 require (
-	github.com/docker/docker v20.10.7+incompatible
+	github.com/docker/docker v20.10.18+incompatible+incompatible
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/mailru/easyjson v0.7.7
