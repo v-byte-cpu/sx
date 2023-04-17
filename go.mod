@@ -8,7 +8,7 @@ require (
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/mailru/easyjson v0.7.7
 	github.com/moby/moby v20.10.7+incompatible
-	github.com/spf13/cobra v1.5.0
+	github.com/spf13/cobra v1.7.0
 	github.com/stretchr/testify v1.8.0
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yl2chen/cidranger v1.0.2
@@ -28,7 +28,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/inconshreveable/mousetrap v1.0.0 // indirect
+	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.1 // indirect
 	github.com/moby/term v0.0.0-20201216013528-df9cb8a40635 // indirect
