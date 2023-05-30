@@ -9,7 +9,7 @@ require (
 	github.com/mailru/easyjson v0.7.7
 	github.com/moby/moby v20.10.7+incompatible
 	github.com/spf13/cobra v1.5.0
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.8.4
 	github.com/vishvananda/netlink v1.1.0
 	github.com/yl2chen/cidranger v1.0.2
 	go.uber.org/ratelimit v0.2.0
