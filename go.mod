@@ -3,7 +3,7 @@ module github.com/v-byte-cpu/sx
 go 1.19
 
 require (
-	github.com/docker/docker v20.10.7+incompatible
+	github.com/docker/docker v20.10.25+incompatible
 	github.com/golang/mock v1.6.0
 	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
 	github.com/mailru/easyjson v0.7.7
@@ -27,7 +27,6 @@ require (
 	github.com/docker/go-units v0.4.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect
-	github.com/gorilla/mux v1.8.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.1 // indirect
