@@ -5,7 +5,7 @@ ADD . /app
 WORKDIR /app
 RUN go build -ldflags "-w -s -linkmode external -extldflags '-static'" -o /sx
 
-FROM alpine:3.16
+FROM alpine:3.18
 
 COPY --from=builder /sx /sx
 ENTRYPOINT ["/sx"]
