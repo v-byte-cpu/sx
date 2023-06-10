@@ -5,7 +5,7 @@ go 1.19
 require (
 	github.com/docker/docker v20.10.7+incompatible
 	github.com/golang/mock v1.6.0
-	github.com/google/gopacket v1.1.20-0.20210304165259-20562ffb40f8
+	github.com/google/gopacket v1.1.20-0.20220810144506-32ee38206866
 	github.com/mailru/easyjson v0.7.7
 	github.com/moby/moby v20.10.7+incompatible
 	github.com/spf13/cobra v1.5.0
@@ -39,7 +39,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sirupsen/logrus v1.4.2 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/vishvananda/netns v0.0.0-20191106174202-0a2b9b5464df // indirect
+	github.com/vishvananda/netns v0.0.0-20210104183010-2eb08e3e575f // indirect
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d // indirect
