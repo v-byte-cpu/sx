@@ -1,3 +1,4 @@
+//go:build !linux
 // +build !linux
 
 package ip
@@ -14,7 +15,7 @@ func GetDefaultInterface() (iface *net.Interface, ifaceIP net.IP, err error) {
 	return
 }
 
-func GetDefaultGatewayIP(iface *net.Interface) (gatewayIP net.IP, err error) {
+func GetDefaultGatewayIP(_ *net.Interface) (gatewayIP net.IP, err error) {
 	err = errOS
 	return
 }

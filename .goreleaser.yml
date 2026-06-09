@@ -1,7 +1,14 @@
+version: 2
+
+project_name: sx
+
 gomod:
   proxy: true
+
 builds:
-  - env:
+  - id: sx
+    binary: sx
+    env:
       - CGO_ENABLED=1
     goos:
       - linux
@@ -10,18 +17,20 @@ builds:
     flags:
       - -trimpath
     ldflags:
-      - -linkmode external -extldflags '-static' -s -w -X main.version={{.Version}} -X main.commit={{.Commit}}
-    mod_timestamp: '{{ .CommitTimestamp }}'
+      - -linkmode external -extldflags '-static' -s -w -X main.version={{ .Version }} -X main.commit={{ .Commit }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
 archives:
-  - files:
-      - none*
+  - id: sx
+
 checksum:
+  name_template: checksums.txt
   algorithm: sha256
+
 changelog:
-  sort: asc
-  filters:
-    exclude:
-      - '^(\s)*docs:'
-      - '^(\s)*test:'
-      - Merge pull request
-      - update README
+  disable: true
+
+release:
+  prerelease: auto
+  mode: replace
+  name_template: "{{ .Version }}"

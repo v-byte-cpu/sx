@@ -17,21 +17,21 @@ type Source struct{}
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
+func NewPacketSource(_ string, _ bool) (*Source, error) {
 	return nil, ErrOS
 }
 
-func (s *Source) SetBPFFilter(bpfFilter string, maxPacketLength int) error {
+func (*Source) SetBPFFilter(_ string, _ int) error {
 	return ErrOS
 }
 
-func (s *Source) Close() {}
+func (*Source) Close() {}
 
-func (s *Source) ReadPacketData() (data []byte, info *gopacket.CaptureInfo, err error) {
+func (*Source) ReadPacketData() (data []byte, info *gopacket.CaptureInfo, err error) {
 	err = ErrOS
 	return
 }
 
-func (s *Source) WritePacketData(pkt []byte) error {
+func (*Source) WritePacketData(_ []byte) error {
 	return ErrOS
 }

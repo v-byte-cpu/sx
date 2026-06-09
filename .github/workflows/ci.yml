@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  go:
+    runs-on: ubuntu-latest
+    container: golang:1.19-alpine
+    env:
+      CGO_ENABLED: 1
+      GOFLAGS: -buildvcs=false
+      GOMODCACHE: /go/pkg/mod
+      GOCACHE: /root/.cache/go-build
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install system dependencies
+        shell: sh
+        run: |
+          apk add --no-cache bash ca-certificates gcc git libc-dev libpcap-dev linux-headers tar
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 100
+          fetch-tags: true
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: ${{ runner.os }}-go-1.19-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.19-
+
+      - name: Check Go formatting
+        run: test -z "$(gofmt -l .)"
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.49.0
+          args: --verbose
+
+      - name: Run revive
+        run: |
+          go install github.com/mgechev/revive@v1.2.3
+          "$(go env GOPATH)/bin/revive" -config .revive.toml -formatter friendly ./...
+
+      - name: Run Go tests
+        run: go test ./... -v -cover
+
+      - name: Run Go build
+        run: go build -ldflags "-w -s"
+
+      - name: Run GoReleaser snapshot
+        uses: goreleaser/goreleaser-action@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          distribution: goreleaser
+          version: v2.16.0
+          args: release --snapshot --clean
+
+  release-helper:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Run release helper tests
+        run: python3 -m unittest discover -s .github/scripts/tests -t .github/scripts

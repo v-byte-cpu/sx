@@ -1,0 +1,39 @@
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+## {{ group | striptags | trim }}
+
+{% for commit in commits -%}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}
+{% endfor -%}
+
+{% endfor %}
+"""
+
+trim = true
+
+[bump]
+initial_tag = "v0.1.0"
+
+[git]
+conventional_commits = true
+tag_pattern = "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-rc\\.[0-9]+)?$"
+
+commit_parsers = [
+  { message = "^feat", group = "<!-- 0 -->New Features" },
+  { message = "^fix", group = "<!-- 1 -->Bug Fixes" },
+  { message = "^docs", group = "<!-- 2 -->Documentation" },
+  { message = "^refactor", group = "<!-- 3 -->Refactoring" },
+  { message = "^perf", group = "<!-- 4 -->Performance" },
+  { message = "^ci", group = "<!-- 5 -->CI" },
+  { message = "^test", group = "<!-- 6 -->Tests" },
+  { message = "^(build|chore)", group = "<!-- 7 -->Chores" },
+  { message = ".*", group = "<!-- 8 -->Other" },
+]
+
+filter_unconventional = true
+sort_commits = "oldest"
+topo_order = false

@@ -1,0 +1,130 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_kind:
+        description: "Release line to publish."
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-pipeline
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: golang:1.19-alpine
+    env:
+      RELEASE_KIND: ${{ inputs.release_kind }}
+      CGO_ENABLED: 1
+      GOFLAGS: -buildvcs=false
+      GOMODCACHE: /go/pkg/mod
+      GOCACHE: /root/.cache/go-build
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install system dependencies
+        shell: sh
+        run: |
+          apk add --no-cache bash ca-certificates gcc git libc-dev libpcap-dev linux-headers python3 tar
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 100
+          fetch-tags: true
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: ${{ runner.os }}-go-1.19-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.19-
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Compute release tag
+        id: compute_release_version
+        run: |
+          set -euo pipefail
+
+          next_tag="$(
+            python3 .github/scripts/compute_release_version.py \
+              --release-kind "${RELEASE_KIND}" \
+              --require-new-commits \
+              --require-absent-tag
+          )"
+          echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_name=${next_tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create annotated tag
+        env:
+          NEXT_TAG: ${{ steps.compute_release_version.outputs.next_tag }}
+          RELEASE_NAME: ${{ steps.compute_release_version.outputs.release_name }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -a "${NEXT_TAG}" -m "Release ${RELEASE_NAME}"
+          git push origin "${NEXT_TAG}"
+
+          commit_sha="$(git rev-parse HEAD)"
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Tag Created
+
+          - Release kind: \`${RELEASE_KIND}\`
+          - Tag: \`${NEXT_TAG}\`
+          - Commit: \`${commit_sha}\`
+          EOF
+
+      - name: Generate release notes
+        id: release_notes
+        env:
+          NEXT_TAG: ${{ steps.compute_release_version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+
+          notes_path="${RUNNER_TEMP}/release-notes.md"
+          ignore_rc_tags='^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
+
+          if [[ "${NEXT_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            git-cliff --current --output "${notes_path}"
+          else
+            git-cliff --current --ignore-tags "${ignore_rc_tags}" --output "${notes_path}"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Release Notes
+
+          EOF
+          cat "$notes_path" >> "$GITHUB_STEP_SUMMARY"
+
+          echo "notes_path=${notes_path}" >> "$GITHUB_OUTPUT"
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          distribution: goreleaser
+          version: v2.16.0
+          args: release --clean --release-notes "${{ steps.release_notes.outputs.notes_path }}"
