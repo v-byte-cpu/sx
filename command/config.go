@@ -22,11 +22,7 @@ import (
 )
 
 const (
-	cliHTTPProtoFlag  = "http"
-	cliHTTPSProtoFlag = "https"
-
 	defaultWorkerCount = 100
-	defaultTimeout     = 5 * time.Second
 	defaultExitDelay   = 300 * time.Millisecond
 )
 
