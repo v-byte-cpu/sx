@@ -44,8 +44,6 @@ func newRootCmd(version string) *cobra.Command {
 		newUDPCmd().cmd,
 		tcpCmd,
 		newSocksCmd().cmd,
-		newDockerCmd().cmd,
-		newElasticCmd().cmd,
 	)
 
 	return cmd
