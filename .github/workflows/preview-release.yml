@@ -1,0 +1,67 @@
+name: preview-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_kind:
+        description: "Release line to preview."
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - rc
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_KIND: ${{ inputs.release_kind }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 100
+          fetch-tags: true
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Compute release tag
+        id: compute_release_version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          next_tag="$(python3 .github/scripts/compute_release_version.py --release-kind "${RELEASE_KIND}")"
+          echo "next_tag=${next_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release preview
+        shell: bash
+        env:
+          NEXT_TAG: ${{ steps.compute_release_version.outputs.next_tag }}
+        run: |
+          set -euo pipefail
+
+          ignore_rc_tags='^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
+          notes_path="${RUNNER_TEMP}/release-notes.md"
+          if [[ "${RELEASE_KIND}" == "stable" ]]; then
+            git-cliff --ignore-tags "${ignore_rc_tags}" --unreleased --bump --tag "${NEXT_TAG}" --output "${notes_path}"
+          else
+            git-cliff --unreleased --bump --tag "${NEXT_TAG}" --output "${notes_path}"
+          fi
+
+          cat >> "$GITHUB_STEP_SUMMARY" <<EOF
+          # Release Preview
+
+          - Release kind: \`${RELEASE_KIND}\`
+          - Next tag: \`${NEXT_TAG}\`
+
+          EOF
+
+          cat "$notes_path" >> "$GITHUB_STEP_SUMMARY"

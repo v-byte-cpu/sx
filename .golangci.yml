@@ -20,6 +20,8 @@ linters:
 
 run:
   timeout: 3m
+  skip-files:
+    - ".*_easyjson\\.go$"
 
 issues:
   exclude-rules:
