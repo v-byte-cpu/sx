@@ -17,6 +17,7 @@ trim = true
 
 [bump]
 initial_tag = "v0.1.0"
+breaking_always_bump_major = false
 
 [git]
 conventional_commits = true
