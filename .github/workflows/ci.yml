@@ -34,9 +34,6 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 100
-          fetch-tags: true
 
       - name: Cache Go modules and build outputs
         uses: actions/cache@v5
@@ -63,14 +60,38 @@ jobs:
       - name: Run Go build
         run: go build -ldflags "-w -s"
 
-      - name: Run GoReleaser snapshot
-        uses: goreleaser/goreleaser-action@v7
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  go-macos:
+    name: go (macOS ${{ matrix.goarch }})
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      GOARCH: ${{ matrix.goarch }}
+      GOFLAGS: -buildvcs=false
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26-intel
+            goarch: amd64
+          - runner: macos-26
+            goarch: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          distribution: goreleaser
-          version: v2.16.0
-          args: release --snapshot --clean
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Run Go tests
+        run: go test ./... -v -cover
+
+      - name: Run Go build
+        run: go build -ldflags "-w -s" -o "${RUNNER_TEMP}/sx"
 
   release-helper:
     runs-on: ubuntu-latest
