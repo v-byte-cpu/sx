@@ -9,7 +9,6 @@ import (
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
 
@@ -47,14 +46,19 @@ func TestProcessPacketData(t *testing.T) {
 		}
 		var opt gopacket.SerializeOptions
 		err := gopacket.SerializeLayers(packet, opt, eth, a)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-sm.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		arpResult := result.(*ScanResult)
 		assert.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}.String(), arpResult.MAC)
@@ -62,7 +66,7 @@ func TestProcessPacketData(t *testing.T) {
 
 		cancel()
 		_, ok = <-sm.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:

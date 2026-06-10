@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestParseIPNetWithError(t *testing.T) {
@@ -40,8 +41,9 @@ func TestParseIPNet(t *testing.T) {
 	for _, vtt := range tests {
 		tt := vtt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := ParseIPNet(tt.in)
-			assert.NoError(t, err)
+			require.NoError(t, err)
 			assert.Equal(t, tt.expected, result)
 
 		})

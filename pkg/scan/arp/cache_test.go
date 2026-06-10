@@ -1,4 +1,4 @@
-//go:generate mockgen -package arp -destination=mock_request_test.go github.com/v-byte-cpu/sx/pkg/scan RequestGenerator
+//go:generate go tool mockgen -package arp -destination=mock_request_test.go github.com/v-byte-cpu/sx/pkg/scan RequestGenerator
 
 package arp
 
@@ -11,9 +11,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
+	"go.uber.org/mock/gomock"
 )
 
 func TestCachePut(t *testing.T) {
@@ -21,7 +22,7 @@ func TestCachePut(t *testing.T) {
 	cache := NewCache()
 	cache.Put(net.IPv4(192, 168, 0, 2).To4(), net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6})
 	mac := cache.Get(net.IPv4(192, 168, 0, 2).To4())
-	require.Equal(t, mac, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6})
+	require.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}, mac)
 }
 
 func TestCacheDelete(t *testing.T) {
@@ -86,7 +87,9 @@ func TestFillCache(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cache := NewCache()
 			err := FillCache(cache, strings.NewReader(tt.input))
 			if tt.err {
@@ -263,15 +266,17 @@ func TestCacheRequestGenerator(t *testing.T) {
 
 				cachegen := NewCacheRequestGenerator(reqgen, tt.gatewayMAC, cache)
 				results, err := cachegen.GenerateRequests(ctx, scanRange)
-				require.NoError(t, err)
+				if !assert.NoError(t, err) {
+					return
+				}
 
 				for _, expectedResult := range tt.expectedRequests {
 					result := <-results
-					require.Equal(t, expectedResult, result)
+					assert.Equal(t, expectedResult, result)
 				}
 
 				_, ok := <-results
-				require.False(t, ok, "results chan is not empty")
+				assert.False(t, ok, "results chan is not empty")
 
 			}()
 			select {

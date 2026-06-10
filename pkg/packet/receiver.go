@@ -1,4 +1,4 @@
-//go:generate mockgen -destination=mock_receiver_test.go -package=packet -source receiver.go
+//go:generate go tool mockgen -destination=mock_receiver_test.go -package=packet -source receiver.go
 
 package packet
 

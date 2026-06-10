@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/gopacket/layers"
 	"github.com/spf13/cobra"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
 )
@@ -24,7 +25,7 @@ func TestPacketScanCmdOptsInitCliFlags(t *testing.T) {
 		"--json -i eth0 --srcip 192.168.0.1 --srcmac 00:11:22:33:44:55 -r 500/7s --exit-delay 10s --exclude ips.txt", " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
 	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
@@ -61,7 +62,7 @@ func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 		}, " "), " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
 	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
@@ -108,7 +109,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 		}, " "), " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
 	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
@@ -160,7 +161,7 @@ func TestGenericScanCmdOptsInitCliFlags(t *testing.T) {
 		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 -r 500/7s --exit-delay 10s --exclude ips.txt --ports-file ports.txt", " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
 	require.Equal(t, "ports.txt", opts.portFile)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
@@ -212,7 +213,9 @@ func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			require.Equal(t, tt.expected, tt.opts.isARPCacheFromStdin())
 		})
 	}
@@ -265,7 +268,9 @@ func TestIPScanCmdOptsValidateARPStdin(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			err := tt.opts.validateARPStdin()
 			if tt.shouldErr {
 				require.Error(t, err)
@@ -311,7 +316,9 @@ func TestIPScanCmdOptsParseDstSubnet(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := tt.opts.parseDstSubnet(tt.args)
 			if tt.shouldErr {
 				require.Error(t, err)
@@ -358,7 +365,9 @@ func TestGenericScanCmdOptsParseDstSubnet(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := tt.opts.parseDstSubnet(tt.args)
 			if tt.shouldErr {
 				require.Error(t, err)
@@ -413,7 +422,9 @@ func TestGenericScanCmdOptsParseScanRange(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := tt.opts.parseScanRange(tt.args)
 			if tt.shouldErr {
 				require.Error(t, err)
@@ -451,7 +462,9 @@ func TestParsePortRangeError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := parsePortRange(tt.portsRange)
 			require.Error(t, err)
 		})
@@ -485,7 +498,9 @@ func TestParsePortRange(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ports, err := parsePortRange(tt.portsRange)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, ports)
@@ -552,7 +567,9 @@ func TestParsePortRanges(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ports, err := parsePortRanges(tt.portsRange)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, ports)
@@ -594,7 +611,9 @@ func TestParseRateLimitError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, _, err := parseRateLimit(tt.rateLimit)
 			require.Error(t, err)
 		})
@@ -643,7 +662,9 @@ func TestParseRateLimit(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			rate, rateWindow, err := parseRateLimit(tt.rateLimit)
 			require.NoError(t, err)
 			require.Equal(t, tt.expectedRateCount, rate)
@@ -683,7 +704,9 @@ func TestParsePacketPayload(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parsePacketPayload(tt.input)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
@@ -717,7 +740,9 @@ func TestParseIPFlagsError(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			_, err := parseIPFlags(tt.flags)
 			require.Error(t, err)
 		})
@@ -800,7 +825,9 @@ func TestParseIPFlags(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			result, err := parseIPFlags(tt.flags)
 			require.NoError(t, err)
 			require.Equal(t, tt.expected, result)
@@ -914,14 +941,18 @@ func TestParseExcludeFile(t *testing.T) {
 					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				if tt.err {
-					require.Error(t, err)
+					assert.Error(t, err)
 					return
 				}
-				require.NoError(t, err)
+				if !assert.NoError(t, err) {
+					return
+				}
 				for _, ip := range tt.contains {
 					ok, err := ips.Contains(ip)
-					require.NoError(t, err)
-					require.True(t, ok, "ip set does not contain ip %s", ip)
+					if !assert.NoError(t, err) {
+						return
+					}
+					assert.True(t, ok, "ip set does not contain ip %s", ip)
 				}
 			}()
 			waitDone(t, done)
@@ -1043,11 +1074,13 @@ func TestParsePortsFile(t *testing.T) {
 					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				if tt.err {
-					require.Error(t, err)
+					assert.Error(t, err)
 					return
 				}
-				require.NoError(t, err)
-				require.Equal(t, tt.expected, ports)
+				if !assert.NoError(t, err) {
+					return
+				}
+				assert.Equal(t, tt.expected, ports)
 			}()
 			waitDone(t, done)
 		})

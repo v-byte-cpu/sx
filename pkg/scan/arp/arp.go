@@ -1,4 +1,4 @@
-//go:generate easyjson -output_filename result_easyjson.go arp.go
+//go:generate go tool easyjson -output_filename result_easyjson.go arp.go
 
 package arp
 

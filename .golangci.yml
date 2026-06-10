@@ -1,41 +1,69 @@
+version: "2"
+
 linters:
+  disable:
+    - errcheck
   enable:
     - dogsled
-    - exportloopref
+    - gochecknoinits
     - funlen
     - gocognit
     - goconst
     - gocritic
     - gocyclo
-    - gofmt
-    - goimports
+    - nolintlint
+    - paralleltest
+    - testifylint
     - staticcheck
     - gosec
-    - govet
     - misspell
     - nestif
     - prealloc
+    - revive
     - unconvert
     - unparam
+  exclusions:
+    paths:
+      - ".*_easyjson\\.go$"
+    rules:
+      - linters:
+          - gosec
+        text: "G404" # math/rand; used to generate pseudo-random source ports
+      - linters:
+          - gosec
+        text: "G115" # integer conversion
+      - linters:
+          - funlen
+          - goconst
+        path: _test\.go
+  settings:
+    revive:
+      severity: warning
+      confidence: 0.8
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-return
+        - name: error-strings
+        - name: empty-block
+        - name: superfluous-else
+        - name: unhandled-error
+        - name: unused-receiver
+        - name: unreachable-code
+        - name: range-val-in-closure
+        - name: range-val-address
+        - name: waitgroup-by-value
+        - name: atomic
+        - name: early-return
+        - name: unconditional-recursion
+        - name: identical-branches
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 run:
   timeout: 3m
-  skip-files:
-    - ".*_easyjson\\.go$"
-
-issues:
-  exclude-rules:
-    - linters:
-        - gosec
-      text: "G404" # math/rand; used to generate pseudo-random source ports
-    - path: pkg/scan/elastic
-      linters:
-        - gosec
-      text: "G402" # TLS insecure; used in Elasticsearch scan to ignore TLS cert
-    - path: pkg/scan/docker
-      linters:
-        - gosec
-      text: "G402" # TLS insecure; used in Docker scan to ignore TLS cert
-    - linters:
-        - funlen
-      path: _test\.go

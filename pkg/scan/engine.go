@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_engine_test.go . PacketSource,Scanner
+//go:generate go tool mockgen -package scan -destination=mock_engine_test.go . PacketSource,Scanner
 
 package scan
 

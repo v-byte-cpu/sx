@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_generator_test.go -source generator.go
+//go:generate go tool mockgen -package scan -destination=mock_generator_test.go -source generator.go
 
 package scan
 

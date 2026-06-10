@@ -1,10 +1,10 @@
-//go:generate easyjson -output_filename result_easyjson.go icmp.go
+//go:generate go tool easyjson -output_filename result_easyjson.go icmp.go
 
 package icmp
 
 import (
 	"fmt"
-	"math/rand"
+	rand "math/rand/v2"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -173,7 +173,7 @@ func WithVPNmode(vpnMode bool) PacketFillerOption {
 
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	payload := make([]byte, 48)
-	rand.Read(payload)
+	fillRandomPayload(payload)
 	f := &PacketFiller{
 		// typical TTL value for Linux
 		ttl:     64,
@@ -189,6 +189,12 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	return f
 }
 
+func fillRandomPayload(payload []byte) {
+	for i := range payload {
+		payload[i] = byte(rand.IntN(256))
+	}
+}
+
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
 
 	ip := &layers.IPv4{
@@ -196,7 +202,7 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		// actually Linux kernel uses more complicated algorithm for ip id generation,
 		// see __ip_select_ident function in net/ipv4/route.c
 		// but we don't care and just spoof it ;)
-		Id:    uint16(1 + rand.Intn(65535)),
+		Id:    uint16(1 + rand.IntN(65535)),
 		Flags: f.flags,
 		// Typical 20 bytes IP header length
 		IHL:      5,
@@ -208,7 +214,7 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 	}
 
 	icmp := &layers.ICMPv4{
-		Id:       uint16(1 + rand.Intn(65535)),
+		Id:       uint16(1 + rand.IntN(65535)),
 		Seq:      1,
 		TypeCode: layers.CreateICMPv4TypeCode(f.typ, f.code),
 	}

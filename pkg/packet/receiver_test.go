@@ -8,9 +8,10 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func newCaptureInfo() *gopacket.CaptureInfo {
@@ -65,7 +66,7 @@ func TestReceivePacketsWithUnrecoverableError(t *testing.T) {
 
 			out := r.ReceivePackets(context.Background())
 			result := chanToSlice(t, chanErrToGeneric(out), 0)
-			assert.Equal(t, 0, len(result), "error slice is not empty")
+			assert.Empty(t, result, "error slice is not empty")
 		})
 	}
 }
@@ -91,7 +92,7 @@ func TestReceivePacketsOnePacket(t *testing.T) {
 
 	out := r.ReceivePackets(context.Background())
 	result := chanToSlice(t, chanErrToGeneric(out), 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestReceivePacketsOnePacketWithProcessError(t *testing.T) {
@@ -114,8 +115,8 @@ func TestReceivePacketsOnePacketWithProcessError(t *testing.T) {
 
 	out := r.ReceivePackets(context.Background())
 	result := chanToSlice(t, chanErrToGeneric(out), 1)
-	assert.Equal(t, 1, len(result), "error slice is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 1, "error slice is invalid")
+	require.Error(t, result[0].(error))
 }
 
 func TestReceivePacketsOnePacketWithRetryError(t *testing.T) {
@@ -158,7 +159,7 @@ func TestReceivePacketsOnePacketWithRetryError(t *testing.T) {
 
 			out := r.ReceivePackets(context.Background())
 			result := chanToSlice(t, chanErrToGeneric(out), 0)
-			assert.Equal(t, 0, len(result), "error slice is not empty")
+			assert.Empty(t, result, "error slice is not empty")
 		})
 	}
 }
@@ -185,8 +186,8 @@ func TestReceivePacketsOnePacketWithUnknownError(t *testing.T) {
 
 	out := r.ReceivePackets(context.Background())
 	result := chanToSlice(t, chanErrToGeneric(out), 1)
-	assert.Equal(t, 1, len(result), "error slice length is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 1, "error slice length is invalid")
+	require.Error(t, result[0].(error))
 }
 
 func TestReceivePacketsOnePacketWithContextCancel(t *testing.T) {
@@ -212,5 +213,5 @@ func TestReceivePacketsOnePacketWithContextCancel(t *testing.T) {
 
 	out := r.ReceivePackets(ctx)
 	result := chanToSlice(t, chanErrToGeneric(out), 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }

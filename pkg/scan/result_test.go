@@ -102,7 +102,7 @@ func TestResultChanReadAfterCloseContext(t *testing.T) {
 
 		cancel()
 		_, ok := <-results.Chan()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 
 	select {

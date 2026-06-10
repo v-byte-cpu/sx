@@ -25,7 +25,9 @@ func TestSocksCmdDstSubnetError(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cmd := newSocksCmd().cmd
 			err := cmd.RunE(cmd, tt.args)
 			require.Error(t, err)
@@ -43,7 +45,7 @@ func TestSocksCmdOptsInitCliFlags(t *testing.T) {
 		"--json -p 23-57,71-2733 -f ip_file.jsonl -w 300 --exit-delay 10s --timeout 2s", " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
 	require.Equal(t, 300, opts.workers)

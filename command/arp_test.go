@@ -26,7 +26,9 @@ func TestArpCmdDstSubnetError(t *testing.T) {
 		},
 	}
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			cmd := newARPCmd().cmd
 			err := cmd.RunE(cmd, tt.args)
 			require.Error(t, err)
@@ -47,7 +49,7 @@ func TestARPCmdOptsInitCliFlags(t *testing.T) {
 		}, " "), " "))
 
 	require.NoError(t, err)
-	require.Equal(t, true, opts.json)
+	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
 	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
