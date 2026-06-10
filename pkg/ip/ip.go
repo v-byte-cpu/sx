@@ -26,10 +26,12 @@ func GetInterfaceIP(iface *net.Interface) (ifaceIP net.IP, err error) {
 	if addrs, err = iface.Addrs(); err != nil || len(addrs) == 0 {
 		return
 	}
-	if ipnet, ok := addrs[0].(*net.IPNet); ok {
-		return ipnet.IP, nil
+	for _, addr := range addrs {
+		if ipnet, ok := addr.(*net.IPNet); ok && ipnet.IP.To4() != nil {
+			return ipnet.IP.To4(), nil
+		}
 	}
-	return nil, fmt.Errorf("invalid IP address: %v", addrs[0])
+	return nil, fmt.Errorf("interface has no IPv4 address: %s", iface.Name)
 }
 
 func GetLocalSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {

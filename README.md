@@ -10,7 +10,7 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/v-byte-cpu/sx/blob/master/LICENSE)
 [![Build Status](https://github.com/v-byte-cpu/sx/actions/workflows/ci.yml/badge.svg)](https://github.com/v-byte-cpu/sx/actions/workflows/ci.yml)
 [![GoReportCard Status](https://goreportcard.com/badge/github.com/v-byte-cpu/sx)](https://goreportcard.com/report/github.com/v-byte-cpu/sx)
-![Platform](https://img.shields.io/badge/platform-linux%2Fdocker-blue)
+![Platform](https://img.shields.io/badge/platform-linux%2FmacOS%2Fdocker-blue)
 
 </div>
 
@@ -53,6 +53,12 @@ Requirements:
 
   * [Go 1.25 or newer](https://golang.org/dl/)
   * [libpcap](https://www.tcpdump.org/) (already installed if you use **wireshark**)
+
+On macOS, install the Xcode Command Line Tools first so CGO can link against the system libpcap:
+
+```
+xcode-select --install
+```
 
 From the root of the source tree, run:
 

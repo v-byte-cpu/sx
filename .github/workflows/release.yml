@@ -22,42 +22,24 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    container: golang:1.25-alpine
+    outputs:
+      next_tag: ${{ steps.compute_release_version.outputs.next_tag }}
+      release_name: ${{ steps.compute_release_version.outputs.release_name }}
+      prerelease: ${{ steps.release_flags.outputs.prerelease }}
+      make_latest: ${{ steps.release_flags.outputs.make_latest }}
     env:
       RELEASE_KIND: ${{ inputs.release_kind }}
-      CGO_ENABLED: 1
-      GOFLAGS: -buildvcs=false
-      GOMODCACHE: /go/pkg/mod
-      GOCACHE: /root/.cache/go-build
     defaults:
       run:
         shell: bash
 
     steps:
-      - name: Install system dependencies
-        shell: sh
-        run: |
-          apk add --no-cache bash ca-certificates gcc git libc-dev libpcap-dev linux-headers python3 tar
-
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 100
           fetch-tags: true
-
-      - name: Cache Go modules and build outputs
-        uses: actions/cache@v5
-        with:
-          path: |
-            /go/pkg/mod
-            /root/.cache/go-build
-          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-1.25-
-
-      - name: Install git-cliff
-        uses: taiki-e/install-action@git-cliff
 
       - name: Compute release tag
         id: compute_release_version
@@ -96,35 +78,213 @@ jobs:
           - Commit: \`${commit_sha}\`
           EOF
 
-      - name: Generate release notes
-        id: release_notes
+      - name: Determine release flags
+        id: release_flags
         env:
           NEXT_TAG: ${{ steps.compute_release_version.outputs.next_tag }}
         run: |
           set -euo pipefail
 
-          notes_path="${RUNNER_TEMP}/release-notes.md"
+          if [[ "${NEXT_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  linux-artifacts:
+    name: Linux artifact
+    needs: release
+    runs-on: ubuntu-latest
+    container: golang:1.25-alpine
+    env:
+      CGO_ENABLED: 1
+      GOARCH: amd64
+      GOFLAGS: -buildvcs=false
+      GOMODCACHE: /go/pkg/mod
+      GOCACHE: /root/.cache/go-build
+      NEXT_TAG: ${{ needs.release.outputs.next_tag }}
+      RELEASE_NAME: ${{ needs.release.outputs.release_name }}
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Install system dependencies
+        shell: sh
+        run: |
+          apk add --no-cache bash ca-certificates gcc git libc-dev libpcap-dev linux-headers tar
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.next_tag }}
+          fetch-depth: 1
+
+      - name: Cache Go modules and build outputs
+        uses: actions/cache@v5
+        with:
+          path: |
+            /go/pkg/mod
+            /root/.cache/go-build
+          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-1.25-
+
+      - name: Build Linux archive
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commit_sha="$(git rev-parse HEAD)"
+          archive="sx_${RELEASE_NAME}_linux_${GOARCH}.tar.gz"
+
+          mkdir -p dist/linux
+          go build \
+            -trimpath \
+            -ldflags "-linkmode external -extldflags '-static' -s -w -X main.version=${RELEASE_NAME} -X main.commit=${commit_sha}" \
+            -o dist/linux/sx
+
+          cp README.md LICENSE dist/linux/
+          tar -C dist/linux -czf "${archive}" sx README.md LICENSE
+
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Linux archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux
+          path: ${{ steps.package.outputs.archive }}
+          retention-days: 1
+          if-no-files-found: error
+
+  macos-artifacts:
+    name: macOS artifacts (${{ matrix.goarch }})
+    needs: release
+    runs-on: ${{ matrix.runner }}
+    env:
+      CGO_ENABLED: 1
+      GOARCH: ${{ matrix.goarch }}
+      GOFLAGS: -buildvcs=false
+      NEXT_TAG: ${{ needs.release.outputs.next_tag }}
+      RELEASE_NAME: ${{ needs.release.outputs.release_name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-26-intel
+            goarch: amd64
+          - runner: macos-26
+            goarch: arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.next_tag }}
+          fetch-depth: 1
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+
+      - name: Build macOS archive
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          commit_sha="$(git rev-parse HEAD)"
+          archive="sx_${RELEASE_NAME}_darwin_${GOARCH}.tar.gz"
+
+          mkdir -p dist/macos
+          go build \
+            -trimpath \
+            -ldflags "-s -w -X main.version=${RELEASE_NAME} -X main.commit=${commit_sha}" \
+            -o dist/macos/sx
+
+          cp README.md LICENSE dist/macos/
+          tar -C dist/macos -czf "${archive}" sx README.md LICENSE
+
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload macOS archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-${{ matrix.goarch }}
+          path: ${{ steps.package.outputs.archive }}
+          retention-days: 1
+          if-no-files-found: error
+
+  publish-release:
+    name: Publish release
+    needs:
+      - release
+      - linux-artifacts
+      - macos-artifacts
+    runs-on: ubuntu-latest
+    env:
+      NEXT_TAG: ${{ needs.release.outputs.next_tag }}
+      RELEASE_NAME: ${{ needs.release.outputs.release_name }}
+      PRERELEASE: ${{ needs.release.outputs.prerelease }}
+      MAKE_LATEST: ${{ needs.release.outputs.make_latest }}
+      NOTES_PATH: ${{ github.workspace }}/release-notes.md
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release.outputs.next_tag }}
+          fetch-depth: 100
+          fetch-tags: true
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
+      - name: Generate release notes
+        run: |
+          set -euo pipefail
+
           ignore_rc_tags='^v[0-9]+\.[0-9]+\.[0-9]+-rc\.[0-9]+$'
 
           if [[ "${NEXT_TAG}" =~ -rc\.[0-9]+$ ]]; then
-            git-cliff --current --output "${notes_path}"
+            git-cliff --current --output "${NOTES_PATH}"
           else
-            git-cliff --current --ignore-tags "${ignore_rc_tags}" --output "${notes_path}"
+            git-cliff --current --ignore-tags "${ignore_rc_tags}" --output "${NOTES_PATH}"
           fi
 
           cat >> "$GITHUB_STEP_SUMMARY" <<EOF
           # Release Notes
 
           EOF
-          cat "$notes_path" >> "$GITHUB_STEP_SUMMARY"
+          cat "${NOTES_PATH}" >> "$GITHUB_STEP_SUMMARY"
 
-          echo "notes_path=${notes_path}" >> "$GITHUB_OUTPUT"
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
 
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v7
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          distribution: goreleaser
-          version: v2.16.0
-          args: release --clean --release-notes "${{ steps.release_notes.outputs.notes_path }}"
+          tag_name: ${{ env.NEXT_TAG }}
+          name: ${{ env.RELEASE_NAME }}
+          body_path: ${{ env.NOTES_PATH }}
+          prerelease: ${{ env.PRERELEASE }}
+          make_latest: ${{ env.MAKE_LATEST }}
+          working_directory: release-assets
+          draft: true
+          files: |
+            *.tar.gz
