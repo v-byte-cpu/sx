@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func newScanRange(opts ...scanRangeOption) *Range {
@@ -223,15 +224,17 @@ func TestPortGenerator(t *testing.T) {
 				portgen := NewPortGenerator()
 				ports, err := portgen.Ports(context.Background(), tt.scanRange)
 				if tt.err {
-					require.Error(t, err)
+					assert.Error(t, err)
 					return
 				}
-				require.NoError(t, err)
-				result := chanToSlice(t, chanPortToGeneric(ports), len(tt.expected))
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanPortToGeneric(ports))
 				sort.Slice(result, func(i, j int) bool {
 					return uint16(result[i].(WrapPort)) < uint16(result[j].(WrapPort))
 				})
-				require.Equal(t, tt.expected, result)
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -250,25 +253,29 @@ func TestPortGeneratorFullRange(t *testing.T) {
 				EndPort:   65535,
 			},
 		})))
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		bitset := big.NewInt(0)
 		cnt := 0
 		for p := range ports {
 			cnt++
 			port, err := p.GetPort()
-			require.NoError(t, err)
+			if !assert.NoError(t, err) {
+				return
+			}
 			i := int(port)
 			if bitset.Bit(i) == 1 {
-				require.Fail(t, "number has already been visited", "number %d", i)
+				assert.Fail(t, "number has already been visited", "number %d", i)
 			}
 			bitset.SetBit(bitset, i, 1)
 		}
 		for i := 1; i <= 65535; i++ {
-			require.Equal(t, uint(1), bitset.Bit(i),
+			assert.Equal(t, uint(1), bitset.Bit(i),
 				"number %d is not visited", i)
 		}
-		require.Equal(t, 65535, cnt, "count is not valid")
+		assert.Equal(t, 65535, cnt, "count is not valid")
 	}()
 	waitDone(t, done)
 }
@@ -342,15 +349,17 @@ func TestIPGenerator(t *testing.T) {
 				ipgen := NewIPGenerator()
 				ips, err := ipgen.IPs(context.Background(), tt.scanRange)
 				if tt.err {
-					require.Error(t, err)
+					assert.Error(t, err)
 					return
 				}
-				require.NoError(t, err)
-				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanIPToGeneric(ips))
 				sort.Slice(result, func(i, j int) bool {
 					return bytes.Compare(result[i].(WrapIP), result[j].(WrapIP)) < 1
 				})
-				require.Equal(t, tt.expected, result)
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -365,6 +374,14 @@ func chanPairToGeneric(in <-chan *Request) <-chan interface{} {
 			out <- i
 		}
 	}()
+	return out
+}
+
+func collectInterfaces(in <-chan interface{}) []interface{} {
+	var out []interface{}
+	for v := range in {
+		out = append(out, v)
+	}
 	return out
 }
 
@@ -491,9 +508,11 @@ func TestIPPortGenerator(t *testing.T) {
 
 				reqgen := NewIPPortGenerator(ipgen, portgen)
 				pairs, err := reqgen.GenerateRequests(ctx, scanRange)
-				require.NoError(t, err)
-				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
-				require.Equal(t, tt.expected, result)
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanPairToGeneric(pairs))
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -539,7 +558,7 @@ func TestIPPortGeneratorError(t *testing.T) {
 
 				reqgen := NewIPPortGenerator(ipgen, portgen)
 				_, err := reqgen.GenerateRequests(ctx, scanRange)
-				require.Error(t, err)
+				assert.Error(t, err)
 			}()
 			waitDone(t, done)
 		})
@@ -605,17 +624,19 @@ func TestIPRequestGenerator(t *testing.T) {
 				reqgen := NewIPRequestGenerator(NewIPGenerator())
 				pairs, err := reqgen.GenerateRequests(context.Background(), tt.input)
 				if tt.err {
-					require.Error(t, err)
+					assert.Error(t, err)
 					return
 				}
-				require.NoError(t, err)
-				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanPairToGeneric(pairs))
 				sort.Slice(result, func(i, j int) bool {
 					return bytes.Compare(
 						result[i].(*Request).DstIP,
 						result[j].(*Request).DstIP) < 1
 				})
-				require.Equal(t, tt.expected, result)
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -765,9 +786,11 @@ func TestFileIPPortGenerator(t *testing.T) {
 					tt.scanRange = &Range{}
 				}
 				pairs, err := reqgen.GenerateRequests(context.Background(), tt.scanRange)
-				require.NoError(t, err)
-				result := chanToSlice(t, chanPairToGeneric(pairs), len(tt.expected))
-				require.Equal(t, tt.expected, result)
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanPairToGeneric(pairs))
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -868,9 +891,11 @@ func TestFileIPGenerator(t *testing.T) {
 					return io.NopCloser(strings.NewReader(tt.input)), nil
 				})
 				ips, err := ipgen.IPs(context.Background(), &Range{})
-				require.NoError(t, err)
-				result := chanToSlice(t, chanIPToGeneric(ips), len(tt.expected))
-				require.Equal(t, tt.expected, result)
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanIPToGeneric(ips))
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -994,9 +1019,11 @@ func TestFilterIPRequestGenerator(t *testing.T) {
 				reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
 				requests, err := reqgen.GenerateRequests(context.Background(), r)
 
-				require.NoError(t, err)
-				result := chanToSlice(t, chanPairToGeneric(requests), len(tt.expected))
-				require.Equal(t, tt.expected, result)
+				if !assert.NoError(t, err) {
+					return
+				}
+				result := collectInterfaces(chanPairToGeneric(requests))
+				assert.Equal(t, tt.expected, result)
 			}()
 			waitDone(t, done)
 		})
@@ -1023,7 +1050,7 @@ func TestFilterIPRequestGeneratorWithGeneratorError(t *testing.T) {
 		reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
 		_, err := reqgen.GenerateRequests(context.Background(), r)
 
-		require.Error(t, err)
+		assert.Error(t, err)
 	}()
 	waitDone(t, done)
 }
@@ -1053,9 +1080,11 @@ func TestFilterIPRequestGeneratorWithIPContainerError(t *testing.T) {
 		reqgen := NewFilterIPRequestGenerator(delegate, excludeIPs)
 		requests, err := reqgen.GenerateRequests(context.Background(), r)
 
-		require.NoError(t, err)
-		result := chanToSlice(t, chanPairToGeneric(requests), 1)
-		require.Equal(t, []interface{}{
+		if !assert.NoError(t, err) {
+			return
+		}
+		result := collectInterfaces(chanPairToGeneric(requests))
+		assert.Equal(t, []interface{}{
 			newScanRequest(
 				withDstIP(net.IPv4(10, 0, 1, 1).To4()),
 				withError(errors.New("ip container error")))}, result)

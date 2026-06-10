@@ -8,6 +8,7 @@ import (
 )
 
 func TestWriteMethodRequest(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		request  *MethodRequest
@@ -26,7 +27,9 @@ func TestWriteMethodRequest(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			_, err := tt.request.WriteTo(&buf)
 			require.NoError(t, err)
@@ -36,6 +39,7 @@ func TestWriteMethodRequest(t *testing.T) {
 }
 
 func TestReadMethodReply(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name     string
 		reply    []byte
@@ -54,7 +58,9 @@ func TestReadMethodReply(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			var buf bytes.Buffer
 			_, err := buf.Write(tt.reply)
 			require.NoError(t, err)

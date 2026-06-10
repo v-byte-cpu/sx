@@ -52,7 +52,7 @@ func TestPacketFillerEthernet(t *testing.T) {
 	icmp := icmpLayer.(*layers.ICMPv4)
 	require.Equal(t, uint8(layers.ICMPv4TypeTimestampRequest), icmp.TypeCode.Type())
 	require.Equal(t, uint8(1), icmp.TypeCode.Code())
-	require.Equal(t, 48, len(icmp.Payload))
+	require.Len(t, icmp.Payload, 48)
 }
 
 func TestPacketFillerIPv4(t *testing.T) {
@@ -91,7 +91,7 @@ func TestPacketFillerIPv4(t *testing.T) {
 	icmp := icmpLayer.(*layers.ICMPv4)
 	require.Equal(t, uint8(layers.ICMPv4TypeTimestampRequest), icmp.TypeCode.Type())
 	require.Equal(t, uint8(1), icmp.TypeCode.Code())
-	require.Equal(t, 48, len(icmp.Payload))
+	require.Len(t, icmp.Payload, 48)
 }
 
 func TestPacketFillerPayload(t *testing.T) {
@@ -253,26 +253,31 @@ func TestProcessPacketDataEthernet(t *testing.T) {
 			ComputeChecksums: true,
 		}
 		err := gopacket.SerializeLayers(packet, opt, eth, ip, icmp)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = p.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-p.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		icmpResult := result.(*ScanResult)
 		assert.Equal(t, ScanType, icmpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), icmpResult.IP)
 		assert.Equal(t, uint8(64), icmpResult.TTL)
-		require.NotNil(t, icmpResult.ICMP)
+		assert.NotNil(t, icmpResult.ICMP)
 		assert.Equal(t, uint8(layers.ICMPv4TypeDestinationUnreachable), icmpResult.ICMP.Type)
 		assert.Equal(t, uint8(layers.ICMPv4CodeHost), icmpResult.ICMP.Code)
 
 		cancel()
 		_, ok = <-p.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:
@@ -317,26 +322,31 @@ func TestProcessPacketDataIPv4(t *testing.T) {
 			ComputeChecksums: true,
 		}
 		err := gopacket.SerializeLayers(packet, opt, ip, icmp)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = p.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-p.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		icmpResult := result.(*ScanResult)
 		assert.Equal(t, ScanType, icmpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), icmpResult.IP)
 		assert.Equal(t, uint8(64), icmpResult.TTL)
-		require.NotNil(t, icmpResult.ICMP)
+		assert.NotNil(t, icmpResult.ICMP)
 		assert.Equal(t, uint8(layers.ICMPv4TypeDestinationUnreachable), icmpResult.ICMP.Type)
 		assert.Equal(t, uint8(layers.ICMPv4CodeHost), icmpResult.ICMP.Code)
 
 		cancel()
 		_, ok = <-p.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:

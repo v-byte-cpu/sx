@@ -22,7 +22,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
-    container: golang:1.19-alpine
+    container: golang:1.25-alpine
     env:
       RELEASE_KIND: ${{ inputs.release_kind }}
       CGO_ENABLED: 1
@@ -52,9 +52,9 @@ jobs:
           path: |
             /go/pkg/mod
             /root/.cache/go-build
-          key: ${{ runner.os }}-go-1.19-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-1.19-
+            ${{ runner.os }}-go-1.25-
 
       - name: Install git-cliff
         uses: taiki-e/install-action@git-cliff

@@ -98,7 +98,7 @@ func (o *arpCmdOpts) getLogger() (logger log.Logger, err error) {
 }
 
 func (o *arpCmdOpts) newARPScanMethod(ctx context.Context) *arp.ScanMethod {
-	var reqgen scan.RequestGenerator = scan.NewIPRequestGenerator(scan.NewIPGenerator())
+	reqgen := scan.NewIPRequestGenerator(scan.NewIPGenerator())
 	if o.excludeIPs != nil {
 		reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
 	}

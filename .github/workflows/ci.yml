@@ -16,7 +16,7 @@ permissions:
 jobs:
   go:
     runs-on: ubuntu-latest
-    container: golang:1.19-alpine
+    container: golang:1.25-alpine
     env:
       CGO_ENABLED: 1
       GOFLAGS: -buildvcs=false
@@ -44,23 +44,18 @@ jobs:
           path: |
             /go/pkg/mod
             /root/.cache/go-build
-          key: ${{ runner.os }}-go-1.19-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-1.25-${{ hashFiles('**/go.sum') }}
           restore-keys: |
-            ${{ runner.os }}-go-1.19-
+            ${{ runner.os }}-go-1.25-
 
       - name: Check Go formatting
         run: test -z "$(gofmt -l .)"
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: v1.49.0
+          version: v2.12
           args: --verbose
-
-      - name: Run revive
-        run: |
-          go install github.com/mgechev/revive@v1.2.3
-          "$(go env GOPATH)/bin/revive" -config .revive.toml -formatter friendly ./...
 
       - name: Run Go tests
         run: go test ./... -v -cover

@@ -275,21 +275,28 @@ func TestProcessPacketDataEthernet(t *testing.T) {
 			ACK:     true,
 		}
 		err := tcp.SetNetworkLayerForChecksum(ip)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		opt := gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		}
 		err = gopacket.SerializeLayers(packet, opt, eth, ip, tcp)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-sm.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		tcpResult := result.(*ScanResult)
 		assert.Equal(t, SYNScanType, tcpResult.ScanType)
@@ -298,7 +305,7 @@ func TestProcessPacketDataEthernet(t *testing.T) {
 
 		cancel()
 		_, ok = <-sm.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:
@@ -341,21 +348,28 @@ func TestProcessPacketDataIPv4(t *testing.T) {
 			ACK:     true,
 		}
 		err := tcp.SetNetworkLayerForChecksum(ip)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		opt := gopacket.SerializeOptions{
 			FixLengths:       true,
 			ComputeChecksums: true,
 		}
 		err = gopacket.SerializeLayers(packet, opt, ip, tcp)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-sm.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		tcpResult := result.(*ScanResult)
 		assert.Equal(t, SYNScanType, tcpResult.ScanType)
@@ -364,7 +378,7 @@ func TestProcessPacketDataIPv4(t *testing.T) {
 
 		cancel()
 		_, ok = <-sm.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:
@@ -456,7 +470,9 @@ func TestAllFlags(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			flags := AllFlags(tt.packet)
 			require.Equal(t, tt.expected, flags)
 		})

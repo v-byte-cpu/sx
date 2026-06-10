@@ -99,7 +99,7 @@ func (s *Scanner) Scan(ctx context.Context, r *scan.Request) (result scan.Result
 		select {
 		// return on ctx.Done without waiting read/write timeout
 		case <-ctx.Done():
-			conn.Close()
+			_ = conn.Close()
 		case <-done:
 		}
 	}()

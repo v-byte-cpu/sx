@@ -4,7 +4,6 @@ package icmp
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -31,18 +30,25 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanIcmp(in *jlexer.Lexer, out 
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "scan":
-			out.ScanType = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ScanType = string(in.String())
+			}
 		case "ip":
-			out.IP = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.IP = string(in.String())
+			}
 		case "ttl":
-			out.TTL = uint8(in.Uint8())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.TTL = uint8(in.Uint8())
+			}
 		case "icmp":
 			if in.IsNull() {
 				in.Skip()
@@ -130,16 +136,19 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanIcmp1(in *jlexer.Lexer, out
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "type":
-			out.Type = uint8(in.Uint8())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Type = uint8(in.Uint8())
+			}
 		case "code":
-			out.Code = uint8(in.Uint8())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Code = uint8(in.Uint8())
+			}
 		default:
 			in.SkipRecursive()
 		}

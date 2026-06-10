@@ -4,7 +4,6 @@ package arp
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -31,18 +30,25 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanArp(in *jlexer.Lexer, out *
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "ip":
-			out.IP = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.IP = string(in.String())
+			}
 		case "mac":
-			out.MAC = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.MAC = string(in.String())
+			}
 		case "vendor":
-			out.Vendor = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Vendor = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}

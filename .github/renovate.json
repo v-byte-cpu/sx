@@ -5,6 +5,62 @@
     "postUpdateOptions": [
         "gomodTidy"
     ],
+    "packageRules": [
+        {
+            "matchManagers": [
+                "github-actions"
+            ],
+            "matchUpdateTypes": [
+                "patch",
+                "minor"
+            ],
+            "groupName": "github-actions",
+            "groupSlug": "github-actions"
+        },
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchUpdateTypes": [
+                "patch",
+                "minor"
+            ],
+            "matchPackageNames": [
+                "github.com/google/**",
+                "github.com/spf13/**",
+                "github.com/vishvananda/**",
+                "github.com/yl2chen/**",
+                "go.uber.org/atomic",
+                "go.uber.org/multierr",
+                "go.uber.org/ratelimit",
+                "go.uber.org/zap",
+                "golang.org/x/**",
+                "gopkg.in/yaml.v3"
+            ],
+            "groupName": "go runtime dependencies",
+            "groupSlug": "go-runtime"
+        },
+        {
+            "matchManagers": [
+                "gomod"
+            ],
+            "matchUpdateTypes": [
+                "patch",
+                "minor"
+            ],
+            "matchPackageNames": [
+                "github.com/benbjohnson/**",
+                "github.com/davecgh/**",
+                "github.com/inconshreveable/**",
+                "github.com/josharian/**",
+                "github.com/pmezard/**",
+                "github.com/stretchr/**",
+                "go.uber.org/mock"
+            ],
+            "groupName": "go dev dependencies",
+            "groupSlug": "go-dev"
+        }
+    ],
     "ignoreDeps": [
         "golang.org/x/net"
     ]

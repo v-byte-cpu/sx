@@ -1,4 +1,4 @@
-//go:generate easyjson -output_filename result_easyjson.go tcp.go
+//go:generate go tool easyjson -output_filename result_easyjson.go tcp.go
 
 package tcp
 

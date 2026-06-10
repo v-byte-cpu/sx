@@ -55,7 +55,9 @@ func TestJSONLoggerResults(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
 			var buf bytes.Buffer
 			logger, err := NewLogger(&buf, "arp", JSON())
@@ -115,7 +117,9 @@ func TestPlainLoggerResults(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
 			var buf bytes.Buffer
 			logger, err := NewLogger(&buf, "arp", Plain())
@@ -145,7 +149,9 @@ func TestLoggerContextExit(t *testing.T) {
 
 		var buf bytes.Buffer
 		logger, err := NewLogger(&buf, "arp", Plain())
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		logger.LogResults(ctx, nil)
 	}()

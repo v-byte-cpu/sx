@@ -1,4 +1,4 @@
-//go:generate mockgen -package scan -destination=mock_sendreceiver_test.go github.com/v-byte-cpu/sx/pkg/packet Sender,Receiver
+//go:generate go tool mockgen -package scan -destination=mock_sendreceiver_test.go github.com/v-byte-cpu/sx/pkg/packet Sender,Receiver
 
 package scan
 
@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
+	"go.uber.org/mock/gomock"
 	"go.uber.org/ratelimit"
 )
 
@@ -28,7 +28,7 @@ func TestMergeErrChanEmptyChannels(t *testing.T) {
 	out := mergeErrChan(context.Background(), c1, c2)
 	result := chanToSlice(t, chanErrToGeneric(out), 0)
 
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestMergeErrChanOneElementAndEmptyChannel(t *testing.T) {
@@ -42,8 +42,8 @@ func TestMergeErrChanOneElementAndEmptyChannel(t *testing.T) {
 	out := mergeErrChan(context.Background(), c1, c2)
 	result := chanToSlice(t, chanErrToGeneric(out), 1)
 
-	assert.Equal(t, 1, len(result), "error slice size is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0].(error))
 }
 
 func TestMergeErrChanTwoElements(t *testing.T) {
@@ -58,8 +58,8 @@ func TestMergeErrChanTwoElements(t *testing.T) {
 	out := mergeErrChan(context.Background(), c1, c2)
 	result := chanToSlice(t, chanErrToGeneric(out), 2)
 
-	assert.Equal(t, 2, len(result), "error slice size is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 2, "error slice size is invalid")
+	require.Error(t, result[0].(error))
 	assert.Error(t, result[1].(error))
 }
 
@@ -76,7 +76,7 @@ func TestMergeErrChanContextExit(t *testing.T) {
 	out := mergeErrChan(ctx, c1, c2)
 	result := chanToSlice(t, chanErrToGeneric(out), 0)
 
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
@@ -116,8 +116,8 @@ func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
 	})
 
 	result := chanToSlice(t, chanErrToGeneric(out), 2)
-	assert.Equal(t, 2, len(result), "error slice is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 2, "error slice is invalid")
+	require.Error(t, result[0].(error))
 	assert.Error(t, result[1].(error))
 }
 
@@ -150,7 +150,7 @@ func TestPacketSourceReturnsError(t *testing.T) {
 		ps := NewPacketSource(reqgen, pktgen)
 		out := ps.Packets(context.Background(), scanRange)
 		result := <-out
-		require.Error(t, result.Err)
+		assert.Error(t, result.Err)
 	}()
 	waitDone(t, done)
 }
@@ -191,8 +191,8 @@ func TestPacketSourceReturnsData(t *testing.T) {
 		ps := NewPacketSource(reqgen, pktgen)
 		out := ps.Packets(context.Background(), scanRange)
 		result := <-out
-		require.NoError(t, result.Err)
-		require.Equal(t, data.Buf, result.Buf)
+		assert.NoError(t, result.Err)
+		assert.Equal(t, data.Buf, result.Buf)
 	}()
 	waitDone(t, done)
 }
@@ -223,12 +223,12 @@ func TestRateLimitScanner(t *testing.T) {
 				break loop
 			default:
 				result, err := rateScanner.Scan(context.Background(), req1)
-				require.NoError(t, err)
-				require.Equal(t, expectedResult, result)
+				assert.NoError(t, err)
+				assert.Equal(t, expectedResult, result)
 				count++
 			}
 		}
-		require.LessOrEqual(t, count, 2)
+		assert.LessOrEqual(t, count, 2)
 	}()
 	waitDone(t, done)
 }
@@ -251,7 +251,7 @@ func TestScanEngineWithRequestGeneratorError(t *testing.T) {
 
 		_, errc := engine.Start(ctx, &Range{})
 		err := <-errc
-		require.Error(t, err)
+		assert.Error(t, err)
 	}()
 	waitDone(t, done)
 }
@@ -277,7 +277,7 @@ func TestScanEngineWithRequestError(t *testing.T) {
 
 		_, errc := engine.Start(ctx, &Range{})
 		err := <-errc
-		require.Error(t, err)
+		assert.Error(t, err)
 	}()
 	waitDone(t, done)
 }
@@ -305,7 +305,7 @@ func TestScanEngineWithScannerError(t *testing.T) {
 
 		_, errc := engine.Start(ctx, &Range{})
 		err := <-errc
-		require.Error(t, err)
+		assert.Error(t, err)
 	}()
 	waitDone(t, done)
 }
@@ -346,16 +346,16 @@ func TestScanEngineWithResults(t *testing.T) {
 		results[0] = <-resultCh.Chan()
 		results[1] = <-resultCh.Chan()
 		cancel()
-		require.Zero(t, len(errc), "error channel is not empty")
+		assert.Empty(t, errc, "error channel is not empty")
 		result, ok := <-resultCh.Chan()
 		if ok {
-			require.Fail(t, "result channel contains more elements than expected: ", result)
+			assert.Fail(t, "result channel contains more elements than expected: ", result)
 		}
 
 		sort.Slice(results, func(i, j int) bool {
 			return results[i].ID() < results[j].ID()
 		})
-		require.Equal(t, []Result{
+		assert.Equal(t, []Result{
 			&mockScanResult{"id1"},
 			&mockScanResult{"id2"},
 		}, results)

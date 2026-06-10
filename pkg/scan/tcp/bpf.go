@@ -20,7 +20,7 @@ func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
 	}
 	if len(r.Ports) > 0 {
 		sb.WriteString(" and (")
-		var ranges []string
+		ranges := make([]string, 0, len(r.Ports))
 		for _, pr := range r.Ports {
 			ranges = append(ranges, fmt.Sprintf("src portrange %d-%d", pr.StartPort, pr.EndPort))
 		}

@@ -4,7 +4,6 @@ package scan
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -31,16 +30,19 @@ func easyjson3c9d2b01DecodeGithubComVByteCpuSxPkgScan(in *jlexer.Lexer, out *IPP
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "ip":
-			out.IP = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.IP = string(in.String())
+			}
 		case "port":
-			out.Port = int(in.Int())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Port = int(in.Int())
+			}
 		default:
 			in.SkipRecursive()
 		}

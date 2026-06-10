@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/google/gopacket"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func TestSenderWithEmptyChannel(t *testing.T) {
@@ -24,9 +24,9 @@ func TestSenderWithEmptyChannel(t *testing.T) {
 	done, errc := s.SendPackets(context.Background(), in)
 
 	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 	result = chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestSenderWithOnePacket(t *testing.T) {
@@ -50,9 +50,9 @@ func TestSenderWithOnePacket(t *testing.T) {
 	done, errc := s.SendPackets(context.Background(), in)
 
 	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 	result = chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestSenderWithTwoPackets(t *testing.T) {
@@ -89,9 +89,9 @@ func TestSenderWithTwoPackets(t *testing.T) {
 	done, errc := s.SendPackets(context.Background(), in)
 
 	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 	result = chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestSenderWithInvalidPacketReturnsError(t *testing.T) {
@@ -107,11 +107,11 @@ func TestSenderWithInvalidPacketReturnsError(t *testing.T) {
 	done, errc := s.SendPackets(context.Background(), in)
 
 	result := chanToSlice(t, chanErrToGeneric(errc), 1)
-	assert.Equal(t, 1, len(result), "error slice size is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0].(error))
 
 	result = chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestSenderWithWriteErrorReturnsError(t *testing.T) {
@@ -133,11 +133,11 @@ func TestSenderWithWriteErrorReturnsError(t *testing.T) {
 	done, errc := s.SendPackets(context.Background(), in)
 
 	result := chanToSlice(t, chanErrToGeneric(errc), 1)
-	assert.Equal(t, 1, len(result), "error slice size is invalid")
-	assert.Error(t, result[0].(error))
+	assert.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0].(error))
 
 	result = chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }
 
 func TestSenderWithTimeout(t *testing.T) {
@@ -157,5 +157,5 @@ func TestSenderWithTimeout(t *testing.T) {
 		require.FailNow(t, "exit timeout")
 	}
 	result := chanToSlice(t, done, 0)
-	assert.Equal(t, 0, len(result), "error slice is not empty")
+	assert.Empty(t, result, "error slice is not empty")
 }

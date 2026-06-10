@@ -4,7 +4,6 @@ package tcp
 
 import (
 	json "encoding/json"
-
 	easyjson "github.com/mailru/easyjson"
 	jlexer "github.com/mailru/easyjson/jlexer"
 	jwriter "github.com/mailru/easyjson/jwriter"
@@ -31,20 +30,31 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanTcp(in *jlexer.Lexer, out *
 	for !in.IsDelim('}') {
 		key := in.UnsafeFieldName(false)
 		in.WantColon()
-		if in.IsNull() {
-			in.Skip()
-			in.WantComma()
-			continue
-		}
 		switch key {
 		case "scan":
-			out.ScanType = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.ScanType = string(in.String())
+			}
 		case "ip":
-			out.IP = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.IP = string(in.String())
+			}
 		case "port":
-			out.Port = uint16(in.Uint16())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Port = uint16(in.Uint16())
+			}
 		case "flags":
-			out.Flags = string(in.String())
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.Flags = string(in.String())
+			}
 		default:
 			in.SkipRecursive()
 		}

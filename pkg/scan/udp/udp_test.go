@@ -280,25 +280,30 @@ func TestProcessPacketDataEthernet(t *testing.T) {
 			ComputeChecksums: true,
 		}
 		err := gopacket.SerializeLayers(packet, opt, eth, ip, icmpLayer)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-sm.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		icmpResult := result.(*icmp.ScanResult)
 		assert.Equal(t, ScanType, icmpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), icmpResult.IP)
-		require.NotNil(t, icmpResult.ICMP)
+		assert.NotNil(t, icmpResult.ICMP)
 		assert.Equal(t, uint8(layers.ICMPv4TypeDestinationUnreachable), icmpResult.ICMP.Type)
 		assert.Equal(t, uint8(layers.ICMPv4CodePort), icmpResult.ICMP.Code)
 
 		cancel()
 		_, ok = <-sm.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:
@@ -343,25 +348,30 @@ func TestProcessPacketDataIPv4(t *testing.T) {
 			ComputeChecksums: true,
 		}
 		err := gopacket.SerializeLayers(packet, opt, ip, icmpLayer)
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		err = sm.ProcessPacketData(packet.Bytes(), &gopacket.CaptureInfo{})
-		require.NoError(t, err)
+		if !assert.NoError(t, err) {
+			return
+		}
 
 		result, ok := <-sm.Results()
 		if !ok {
-			require.FailNow(t, "results chan is empty")
+			assert.Fail(t, "results chan is empty")
+			return
 		}
 		icmpResult := result.(*icmp.ScanResult)
 		assert.Equal(t, ScanType, icmpResult.ScanType)
 		assert.Equal(t, net.IPv4(192, 168, 0, 2).To4().String(), icmpResult.IP)
-		require.NotNil(t, icmpResult.ICMP)
+		assert.NotNil(t, icmpResult.ICMP)
 		assert.Equal(t, uint8(layers.ICMPv4TypeDestinationUnreachable), icmpResult.ICMP.Type)
 		assert.Equal(t, uint8(layers.ICMPv4CodePort), icmpResult.ICMP.Code)
 
 		cancel()
 		_, ok = <-sm.Results()
-		require.False(t, ok, "results chan is not closed")
+		assert.False(t, ok, "results chan is not closed")
 	}()
 	select {
 	case <-done:

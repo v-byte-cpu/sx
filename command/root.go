@@ -3,7 +3,6 @@ package command
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"sync"
 	"time"
@@ -17,7 +16,6 @@ import (
 )
 
 func Main(version string) {
-	rand.Seed(time.Now().Unix())
 	if err := newRootCmd(version).Execute(); err != nil {
 		os.Exit(1)
 	}

@@ -1,5 +1,5 @@
-//go:generate mockgen -package scan -destination=mock_request_test.go . PortGenerator,IPGenerator,RequestGenerator,IPContainer
-//go:generate easyjson -output_filename request_easyjson.go request.go
+//go:generate go tool mockgen -package scan -destination=mock_request_test.go . PortGenerator,IPGenerator,RequestGenerator,IPContainer
+//go:generate go tool easyjson -output_filename request_easyjson.go request.go
 
 package scan
 

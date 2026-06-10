@@ -34,10 +34,12 @@ func TestBPFFilter(t *testing.T) {
 	}
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			filter, maxPacketLength := BPFFilter(tt.scanRange)
 			assert.Equal(t, tt.expectedFilter, filter)
-			assert.Equal(t, maxPacketLength, MaxPacketLength)
+			assert.Equal(t, MaxPacketLength, maxPacketLength)
 		})
 	}
 }
