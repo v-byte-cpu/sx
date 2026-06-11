@@ -125,6 +125,10 @@ jobs:
           ref: ${{ needs.release.outputs.next_tag }}
           fetch-depth: 1
 
+      - name: Mark repository as safe for git
+        shell: sh
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Cache Go modules and build outputs
         uses: actions/cache@v5
         with:
