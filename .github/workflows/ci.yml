@@ -14,7 +14,28 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      go_ci: ${{ steps.filter.outputs.go_ci }}
+
+    steps:
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            go_ci:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.golangci.yml'
+              - '.github/workflows/**'
+              - '.github/scripts/**'
+
   go:
+    needs: changes
+    if: needs.changes.outputs.go_ci == 'true'
     runs-on: ubuntu-latest
     container: golang:1.25-alpine
     env:
@@ -61,6 +82,8 @@ jobs:
         run: go build -ldflags "-w -s"
 
   go-macos:
+    needs: changes
+    if: needs.changes.outputs.go_ci == 'true'
     name: go (macOS ${{ matrix.goarch }})
     runs-on: ${{ matrix.runner }}
     env:

@@ -140,6 +140,10 @@ sample output:
 
 In this case we find out that ports 22 and 443 are open.
 
+If you see `send: No buffer space available` during large scans, it usually means the sender is outrunning the kernel/raw-socket buffers.
+The first fix is to add `--rate` and lower the send burst, for example `-r 100000/s` or lower if needed.
+On some systems, tuning OS socket/buffer limits can also help, but rate limiting is the primary fix.
+
 scan with JSON output:
 
 ```
