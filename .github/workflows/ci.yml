@@ -20,6 +20,9 @@ jobs:
       go_ci: ${{ steps.filter.outputs.go_ci }}
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        
       - name: Detect changed paths
         id: filter
         uses: dorny/paths-filter@v4
