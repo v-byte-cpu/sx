@@ -41,6 +41,9 @@ jobs:
           fetch-depth: 100
           fetch-tags: true
 
+      - name: Install git-cliff
+        uses: taiki-e/install-action@git-cliff
+
       - name: Compute release tag
         id: compute_release_version
         run: |
