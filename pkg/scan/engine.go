@@ -24,8 +24,10 @@ type Range struct {
 	Ports     []*PortRange
 }
 
+// Engine runs a scan and reports its completion and errors.
 type Engine interface {
-	Start(ctx context.Context, r *Range) (done <-chan interface{}, errc <-chan error)
+	// Start runs a scan for r until completion or context cancellation.
+	Start(ctx context.Context, r *Range) (done <-chan struct{}, errc <-chan error)
 }
 
 type Resulter interface {
@@ -80,41 +82,12 @@ func NewPacketEngine(ps PacketSource, s packet.Sender, r packet.Receiver) *Packe
 	return &PacketEngine{src: ps, snd: s, rcv: r}
 }
 
-func (e *PacketEngine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
+// Start runs a packet scan for r until completion or context cancellation.
+func (e *PacketEngine) Start(ctx context.Context, r *Range) (<-chan struct{}, <-chan error) {
 	packets := e.src.Packets(ctx, r)
 	done, errc1 := e.snd.SendPackets(ctx, packets)
 	errc2 := e.rcv.ReceivePackets(ctx)
-	return done, mergeErrChan(ctx, errc1, errc2)
-}
-
-// generics would be helpful :)
-func mergeErrChan(ctx context.Context, channels ...<-chan error) <-chan error {
-	var wg sync.WaitGroup
-	wg.Add(len(channels))
-
-	out := make(chan error, 100)
-	multiplex := func(c <-chan error) {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e, ok := <-c:
-				if !ok {
-					return
-				}
-				writeError(ctx, out, e)
-			}
-		}
-	}
-	for _, c := range channels {
-		go multiplex(c)
-	}
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-	return out
+	return done, mergeChannels(ctx, 100, errc1, errc2)
 }
 
 type PacketMethod interface {
@@ -153,27 +126,31 @@ func (s *rateLimitScanner) Scan(ctx context.Context, r *Request) (Result, error)
 	return s.Scanner.Scan(ctx, r)
 }
 
-type GenericEngine struct {
+// ScanEngine runs scanner workers over generated requests.
+type ScanEngine struct {
 	reqgen      RequestGenerator
 	scanner     Scanner
 	results     ResultChan
 	workerCount int
 }
 
-// Assert that GenericEngine conforms to the scan.EngineResulter interface
-var _ EngineResulter = (*GenericEngine)(nil)
+// Assert that ScanEngine conforms to the scan.EngineResulter interface.
+var _ EngineResulter = (*ScanEngine)(nil)
 
-type GenericEngineOption func(s *GenericEngine)
+// ScanEngineOption configures a ScanEngine.
+type ScanEngineOption func(s *ScanEngine)
 
-func WithScanWorkerCount(workerCount int) GenericEngineOption {
-	return func(s *GenericEngine) {
+// WithScanWorkerCount sets the number of concurrent scanner workers.
+func WithScanWorkerCount(workerCount int) ScanEngineOption {
+	return func(s *ScanEngine) {
 		s.workerCount = workerCount
 	}
 }
 
+// NewScanEngine creates a ScanEngine from its request, scanner, and result dependencies.
 func NewScanEngine(reqgen RequestGenerator,
-	scanner Scanner, results ResultChan, opts ...GenericEngineOption) *GenericEngine {
-	s := &GenericEngine{
+	scanner Scanner, results ResultChan, opts ...ScanEngineOption) *ScanEngine {
+	s := &ScanEngine{
 		reqgen:      reqgen,
 		scanner:     scanner,
 		results:     results,
@@ -185,12 +162,14 @@ func NewScanEngine(reqgen RequestGenerator,
 	return s
 }
 
-func (e *GenericEngine) Results() <-chan Result {
+// Results returns scan results until the result context is canceled.
+func (e *ScanEngine) Results() <-chan Result {
 	return e.results.Chan()
 }
 
-func (e *GenericEngine) Start(ctx context.Context, r *Range) (<-chan interface{}, <-chan error) {
-	done := make(chan interface{})
+// Start runs a scan for r until completion or context cancellation.
+func (e *ScanEngine) Start(ctx context.Context, r *Range) (<-chan struct{}, <-chan error) {
+	done := make(chan struct{})
 	errc := make(chan error, 100)
 	requests, err := e.reqgen.GenerateRequests(ctx, r)
 	if err != nil {
@@ -212,7 +191,7 @@ func (e *GenericEngine) Start(ctx context.Context, r *Range) (<-chan interface{}
 	return done, errc
 }
 
-func (e *GenericEngine) worker(ctx context.Context, wg *sync.WaitGroup,
+func (e *ScanEngine) worker(ctx context.Context, wg *sync.WaitGroup,
 	requests <-chan *Request, errc chan<- error) {
 	defer wg.Done()
 	for {
@@ -224,25 +203,21 @@ func (e *GenericEngine) worker(ctx context.Context, wg *sync.WaitGroup,
 				return
 			}
 			if r.Err != nil {
-				writeError(ctx, errc, r.Err)
+				if !sendContext(ctx, errc, r.Err) {
+					return
+				}
 				continue
 			}
 			result, err := e.scanner.Scan(ctx, r)
 			if err != nil {
-				writeError(ctx, errc, err)
+				if !sendContext(ctx, errc, err) {
+					return
+				}
 				continue
 			}
 			if result != nil {
 				e.results.Put(result)
 			}
 		}
-	}
-}
-
-func writeError(ctx context.Context, out chan<- error, err error) {
-	select {
-	case <-ctx.Done():
-		return
-	case out <- err:
 	}
 }

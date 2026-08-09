@@ -42,10 +42,10 @@ func (m *MockSender) EXPECT() *MockSenderMockRecorder {
 }
 
 // SendPackets mocks base method.
-func (m *MockSender) SendPackets(ctx context.Context, in <-chan *packet.BufferData) (<-chan any, <-chan error) {
+func (m *MockSender) SendPackets(ctx context.Context, in <-chan *packet.BufferData) (<-chan struct{}, <-chan error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SendPackets", ctx, in)
-	ret0, _ := ret[0].(<-chan any)
+	ret0, _ := ret[0].(<-chan struct{})
 	ret1, _ := ret[1].(<-chan error)
 	return ret0, ret1
 }

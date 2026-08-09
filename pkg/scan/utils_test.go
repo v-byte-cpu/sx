@@ -9,9 +9,9 @@ import (
 
 const waitTimeout = 3 * time.Second
 
-func chanToSlice(t *testing.T, in <-chan interface{}, expectedLen int) []interface{} {
+func chanToSlice[T any](t *testing.T, in <-chan T, expectedLen int) []T {
 	t.Helper()
-	result := []interface{}{}
+	result := []T{}
 loop:
 	for {
 		select {
@@ -24,21 +24,10 @@ loop:
 			}
 			result = append(result, data)
 		case <-time.After(waitTimeout):
-			t.Fatal("read timeout")
+			require.FailNow(t, "read timeout")
 		}
 	}
 	return result
-}
-
-func chanErrToGeneric(in <-chan error) <-chan interface{} {
-	out := make(chan interface{}, cap(in))
-	go func() {
-		defer close(out)
-		for i := range in {
-			out <- i
-		}
-	}()
-	return out
 }
 
 func waitDone(t *testing.T, done <-chan interface{}) {

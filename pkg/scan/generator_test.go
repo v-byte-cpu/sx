@@ -8,22 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
 	"go.uber.org/mock/gomock"
 )
-
-func chanBufferDataToGeneric(in <-chan *packet.BufferData) <-chan interface{} {
-	out := make(chan interface{}, cap(in))
-	go func() {
-		defer close(out)
-		for i := range in {
-			out <- i
-		}
-	}()
-	return out
-}
 
 func TestGeneratorPacketsWithEmptyChannel(t *testing.T) {
 	t.Parallel()
@@ -35,8 +23,8 @@ func TestGeneratorPacketsWithEmptyChannel(t *testing.T) {
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 0)
-	assert.Empty(t, result, "result is not empty")
+	result := chanToSlice(t, out, 0)
+	require.Empty(t, result, "result is not empty")
 }
 
 func TestMultiGeneratorPacketsWithEmptyChannel(t *testing.T) {
@@ -49,8 +37,8 @@ func TestMultiGeneratorPacketsWithEmptyChannel(t *testing.T) {
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
 	out := g.Packets(context.Background(), in)
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 0)
-	assert.Empty(t, result, "result is not empty")
+	result := chanToSlice(t, out, 0)
+	require.Empty(t, result, "result is not empty")
 }
 
 func TestGeneratorPacketsWithOnePair(t *testing.T) {
@@ -70,12 +58,12 @@ func TestGeneratorPacketsWithOnePair(t *testing.T) {
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.NoError(t, result.Err)
-	assert.NotNil(t, result.Buf)
+	require.NotNil(t, result.Buf)
 }
 
 func TestMultiGeneratorPacketsWithOnePair(t *testing.T) {
@@ -95,12 +83,12 @@ func TestMultiGeneratorPacketsWithOnePair(t *testing.T) {
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.NoError(t, result.Err)
-	assert.NotNil(t, result.Buf)
+	require.NotNil(t, result.Buf)
 }
 
 func TestGeneratorPacketsWithTwoPairs(t *testing.T) {
@@ -123,15 +111,15 @@ func TestGeneratorPacketsWithTwoPairs(t *testing.T) {
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 2)
+	results := chanToSlice(t, out, 2)
 
-	assert.Len(t, results, 2, "result size is invalid")
-	result1 := results[0].(*packet.BufferData)
-	result2 := results[1].(*packet.BufferData)
+	require.Len(t, results, 2, "result size is invalid")
+	result1 := results[0]
+	result2 := results[1]
 	require.NoError(t, result1.Err)
-	assert.NotNil(t, result1.Buf)
+	require.NotNil(t, result1.Buf)
 	require.NoError(t, result2.Err)
-	assert.NotNil(t, result2.Buf)
+	require.NotNil(t, result2.Buf)
 }
 
 func TestMultiGeneratorPacketsWithTwoPairs(t *testing.T) {
@@ -155,15 +143,15 @@ func TestMultiGeneratorPacketsWithTwoPairs(t *testing.T) {
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 2)
+	results := chanToSlice(t, out, 2)
 
-	assert.Len(t, results, 2, "result size is invalid")
-	result1 := results[0].(*packet.BufferData)
-	result2 := results[1].(*packet.BufferData)
+	require.Len(t, results, 2, "result size is invalid")
+	result1 := results[0]
+	result2 := results[1]
 	require.NoError(t, result1.Err)
-	assert.NotNil(t, result1.Buf)
+	require.NotNil(t, result1.Buf)
 	require.NoError(t, result2.Err)
-	assert.NotNil(t, result2.Buf)
+	require.NotNil(t, result2.Buf)
 }
 
 func TestGeneratorPacketsReturnsRequestError(t *testing.T) {
@@ -178,12 +166,12 @@ func TestGeneratorPacketsReturnsRequestError(t *testing.T) {
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.Error(t, result.Err)
-	assert.Nil(t, result.Buf)
+	require.Nil(t, result.Buf)
 }
 
 func TestGeneratorPacketsReturnsFillError(t *testing.T) {
@@ -203,12 +191,12 @@ func TestGeneratorPacketsReturnsFillError(t *testing.T) {
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.Error(t, result.Err)
-	assert.Nil(t, result.Buf)
+	require.Nil(t, result.Buf)
 }
 
 func TestMultiGeneratorPacketsReturnsRequestError(t *testing.T) {
@@ -223,12 +211,12 @@ func TestMultiGeneratorPacketsReturnsRequestError(t *testing.T) {
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.Error(t, result.Err)
-	assert.Nil(t, result.Buf)
+	require.Nil(t, result.Buf)
 }
 
 func TestMultiGeneratorPacketsReturnsFillError(t *testing.T) {
@@ -249,12 +237,12 @@ func TestMultiGeneratorPacketsReturnsFillError(t *testing.T) {
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
 	out := g.Packets(context.Background(), in)
-	results := chanToSlice(t, chanBufferDataToGeneric(out), 1)
+	results := chanToSlice(t, out, 1)
 
-	assert.Len(t, results, 1, "result size is invalid")
-	result := results[0].(*packet.BufferData)
+	require.Len(t, results, 1, "result size is invalid")
+	result := results[0]
 	require.Error(t, result.Err)
-	assert.Nil(t, result.Buf)
+	require.Nil(t, result.Buf)
 }
 
 func TestGeneratorPacketsWithTimeout(t *testing.T) {
@@ -291,33 +279,33 @@ func TestMultiGeneratorPacketsWithTimeout(t *testing.T) {
 	}
 }
 
-func TestMergeBufferDataChanEmptyChannels(t *testing.T) {
+func TestMergeChannelsBufferDataEmptyChannels(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan *packet.BufferData)
 	close(c1)
 	c2 := make(chan *packet.BufferData)
 	close(c2)
-	out := MergeBufferDataChan(context.Background(), c1, c2)
+	out := mergeChannels(context.Background(), 200, c1, c2)
 
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 0)
-	assert.Empty(t, result, "result slice is not empty")
+	result := chanToSlice(t, out, 0)
+	require.Empty(t, result, "result slice is not empty")
 }
 
-func TestMergeBufferDataChanOneElementAndEmptyChannel(t *testing.T) {
+func TestMergeChannelsBufferDataOneElementAndEmptyChannel(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan *packet.BufferData, 1)
 	c1 <- &packet.BufferData{}
 	close(c1)
 	c2 := make(chan *packet.BufferData)
 	close(c2)
-	out := MergeBufferDataChan(context.Background(), c1, c2)
+	out := mergeChannels(context.Background(), 200, c1, c2)
 
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 1)
-	assert.Len(t, result, 1, "result slice size is invalid")
-	assert.NotNil(t, result[0])
+	result := chanToSlice(t, out, 1)
+	require.Len(t, result, 1, "result slice size is invalid")
+	require.NotNil(t, result[0])
 }
 
-func TestMergeBufferDataChanTwoElements(t *testing.T) {
+func TestMergeChannelsBufferDataTwoElements(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan *packet.BufferData, 1)
 	c1 <- &packet.BufferData{}
@@ -325,15 +313,15 @@ func TestMergeBufferDataChanTwoElements(t *testing.T) {
 	c2 := make(chan *packet.BufferData, 1)
 	c2 <- &packet.BufferData{}
 	close(c2)
-	out := MergeBufferDataChan(context.Background(), c1, c2)
+	out := mergeChannels(context.Background(), 200, c1, c2)
 
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 2)
-	assert.Len(t, result, 2, "result slice size is invalid")
-	assert.NotNil(t, result[0])
-	assert.NotNil(t, result[1])
+	result := chanToSlice(t, out, 2)
+	require.Len(t, result, 2, "result slice size is invalid")
+	require.NotNil(t, result[0])
+	require.NotNil(t, result[1])
 }
 
-func TestMergeBufferDataChanContextExit(t *testing.T) {
+func TestMergeChannelsBufferDataContextExit(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan *packet.BufferData)
 	defer close(c1)
@@ -342,8 +330,8 @@ func TestMergeBufferDataChanContextExit(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
-	out := MergeBufferDataChan(ctx, c1, c2)
+	out := mergeChannels(ctx, 200, c1, c2)
 
-	result := chanToSlice(t, chanBufferDataToGeneric(out), 0)
-	assert.Empty(t, result, "result slice is not empty")
+	result := chanToSlice(t, out, 0)
+	require.Empty(t, result, "result slice is not empty")
 }

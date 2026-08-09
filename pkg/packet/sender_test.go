@@ -7,10 +7,16 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+type typedDoneSender interface {
+	// SendPackets exposes the expected typed completion contract.
+	SendPackets(ctx context.Context, in <-chan *BufferData) (done <-chan struct{}, errc <-chan error)
+}
+
+var _ typedDoneSender = (Sender)(nil)
 
 func TestSenderWithEmptyChannel(t *testing.T) {
 	t.Parallel()
@@ -23,10 +29,10 @@ func TestSenderWithEmptyChannel(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Empty(t, result, "error slice is not empty")
-	result = chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	result := chanToSlice(t, errc, 0)
+	require.Empty(t, result, "error slice is not empty")
+	doneResult := chanToSlice(t, done, 0)
+	require.Empty(t, doneResult, "done channel is not empty")
 }
 
 func TestSenderWithOnePacket(t *testing.T) {
@@ -49,10 +55,10 @@ func TestSenderWithOnePacket(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Empty(t, result, "error slice is not empty")
-	result = chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	result := chanToSlice(t, errc, 0)
+	require.Empty(t, result, "error slice is not empty")
+	doneResult := chanToSlice(t, done, 0)
+	require.Empty(t, doneResult, "done channel is not empty")
 }
 
 func TestSenderWithTwoPackets(t *testing.T) {
@@ -88,10 +94,10 @@ func TestSenderWithTwoPackets(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	result := chanToSlice(t, chanErrToGeneric(errc), 0)
-	assert.Empty(t, result, "error slice is not empty")
-	result = chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	result := chanToSlice(t, errc, 0)
+	require.Empty(t, result, "error slice is not empty")
+	doneResult := chanToSlice(t, done, 0)
+	require.Empty(t, doneResult, "done channel is not empty")
 }
 
 func TestSenderWithInvalidPacketReturnsError(t *testing.T) {
@@ -106,12 +112,12 @@ func TestSenderWithInvalidPacketReturnsError(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	result := chanToSlice(t, chanErrToGeneric(errc), 1)
-	assert.Len(t, result, 1, "error slice size is invalid")
-	require.Error(t, result[0].(error))
+	result := chanToSlice(t, errc, 1)
+	require.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0])
 
-	result = chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	doneResult := chanToSlice(t, done, 0)
+	require.Empty(t, doneResult, "done channel is not empty")
 }
 
 func TestSenderWithWriteErrorReturnsError(t *testing.T) {
@@ -132,12 +138,12 @@ func TestSenderWithWriteErrorReturnsError(t *testing.T) {
 
 	done, errc := s.SendPackets(context.Background(), in)
 
-	result := chanToSlice(t, chanErrToGeneric(errc), 1)
-	assert.Len(t, result, 1, "error slice size is invalid")
-	require.Error(t, result[0].(error))
+	result := chanToSlice(t, errc, 1)
+	require.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0])
 
-	result = chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	doneResult := chanToSlice(t, done, 0)
+	require.Empty(t, doneResult, "done channel is not empty")
 }
 
 func TestSenderWithTimeout(t *testing.T) {
@@ -157,5 +163,33 @@ func TestSenderWithTimeout(t *testing.T) {
 		require.FailNow(t, "exit timeout")
 	}
 	result := chanToSlice(t, done, 0)
-	assert.Empty(t, result, "error slice is not empty")
+	require.Empty(t, result, "error slice is not empty")
+}
+
+func TestSenderCancellationWithFullErrorChannel(t *testing.T) {
+	t.Parallel()
+
+	const errorChannelCapacity = 100
+	in := make(chan *BufferData, errorChannelCapacity+1)
+	for range errorChannelCapacity + 1 {
+		in <- &BufferData{Err: errors.New("invalid data")}
+	}
+	close(in)
+
+	ctrl := gomock.NewController(t)
+	w := NewMockWriter(ctrl)
+	s := NewSender(w)
+	ctx, cancel := context.WithCancel(context.Background())
+	done, errc := s.SendPackets(ctx, in)
+
+	require.Eventually(t, func() bool {
+		return len(errc) == cap(errc)
+	}, time.Second, time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		require.FailNow(t, "sender did not stop after context cancellation")
+	}
 }

@@ -11,27 +11,34 @@ import (
 	"time"
 
 	"github.com/google/gopacket"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/packet"
 	"go.uber.org/mock/gomock"
 	"go.uber.org/ratelimit"
 )
 
-func TestMergeErrChanEmptyChannels(t *testing.T) {
+type typedDoneEngine interface {
+	// Start exposes the expected typed completion contract.
+	Start(ctx context.Context, r *Range) (done <-chan struct{}, errc <-chan error)
+}
+
+var _ typedDoneEngine = (Engine)(nil)
+var _ EngineResulter = (*ScanEngine)(nil)
+
+func TestMergeChannelsErrorsEmptyChannels(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan error)
 	close(c1)
 	c2 := make(chan error)
 	close(c2)
 
-	out := mergeErrChan(context.Background(), c1, c2)
-	result := chanToSlice(t, chanErrToGeneric(out), 0)
+	out := mergeChannels(context.Background(), 100, c1, c2)
+	result := chanToSlice(t, out, 0)
 
-	assert.Empty(t, result, "error slice is not empty")
+	require.Empty(t, result, "error slice is not empty")
 }
 
-func TestMergeErrChanOneElementAndEmptyChannel(t *testing.T) {
+func TestMergeChannelsErrorsOneElementAndEmptyChannel(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan error, 1)
 	c1 <- errors.New("test error")
@@ -39,14 +46,14 @@ func TestMergeErrChanOneElementAndEmptyChannel(t *testing.T) {
 	c2 := make(chan error)
 	close(c2)
 
-	out := mergeErrChan(context.Background(), c1, c2)
-	result := chanToSlice(t, chanErrToGeneric(out), 1)
+	out := mergeChannels(context.Background(), 100, c1, c2)
+	result := chanToSlice(t, out, 1)
 
-	assert.Len(t, result, 1, "error slice size is invalid")
-	require.Error(t, result[0].(error))
+	require.Len(t, result, 1, "error slice size is invalid")
+	require.Error(t, result[0])
 }
 
-func TestMergeErrChanTwoElements(t *testing.T) {
+func TestMergeChannelsErrorsTwoElements(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan error, 1)
 	c1 <- errors.New("test error")
@@ -55,15 +62,15 @@ func TestMergeErrChanTwoElements(t *testing.T) {
 	c2 <- errors.New("test error")
 	close(c2)
 
-	out := mergeErrChan(context.Background(), c1, c2)
-	result := chanToSlice(t, chanErrToGeneric(out), 2)
+	out := mergeChannels(context.Background(), 100, c1, c2)
+	result := chanToSlice(t, out, 2)
 
-	assert.Len(t, result, 2, "error slice size is invalid")
-	require.Error(t, result[0].(error))
-	assert.Error(t, result[1].(error))
+	require.Len(t, result, 2, "error slice size is invalid")
+	require.Error(t, result[0])
+	require.Error(t, result[1])
 }
 
-func TestMergeErrChanContextExit(t *testing.T) {
+func TestMergeChannelsErrorsContextExit(t *testing.T) {
 	t.Parallel()
 	c1 := make(chan error)
 	defer close(c1)
@@ -73,10 +80,10 @@ func TestMergeErrChanContextExit(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Millisecond)
 	defer cancel()
 
-	out := mergeErrChan(ctx, c1, c2)
-	result := chanToSlice(t, chanErrToGeneric(out), 0)
+	out := mergeChannels(ctx, 100, c1, c2)
+	result := chanToSlice(t, out, 0)
 
-	assert.Empty(t, result, "error slice is not empty")
+	require.Empty(t, result, "error slice is not empty")
 }
 
 func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
@@ -115,252 +122,206 @@ func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
 		},
 	})
 
-	result := chanToSlice(t, chanErrToGeneric(out), 2)
-	assert.Len(t, result, 2, "error slice is invalid")
-	require.Error(t, result[0].(error))
-	assert.Error(t, result[1].(error))
+	result := chanToSlice(t, out, 2)
+	require.Len(t, result, 2, "error slice is invalid")
+	require.Error(t, result[0])
+	require.Error(t, result[1])
 }
 
 func TestPacketSourceReturnsError(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	pktgen := NewMockPacketGenerator(ctrl)
 
-	go func() {
-		defer close(done)
-
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		pktgen := NewMockPacketGenerator(ctrl)
-
-		scanRange := &Range{
-			SrcIP:  net.IPv4(192, 168, 0, 1),
-			SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-			Ports: []*PortRange{
-				{
-					StartPort: 22,
-					EndPort:   22,
-				},
+	scanRange := &Range{
+		SrcIP:  net.IPv4(192, 168, 0, 1),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		Ports: []*PortRange{
+			{
+				StartPort: 22,
+				EndPort:   22,
 			},
-		}
+		},
+	}
 
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), scanRange).
-			Return(nil, errors.New("generate error"))
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), scanRange).
+		Return(nil, errors.New("generate error"))
 
-		ps := NewPacketSource(reqgen, pktgen)
-		out := ps.Packets(context.Background(), scanRange)
-		result := <-out
-		assert.Error(t, result.Err)
-	}()
-	waitDone(t, done)
+	ps := NewPacketSource(reqgen, pktgen)
+	results := chanToSlice(t, ps.Packets(context.Background(), scanRange), 1)
+	require.Error(t, results[0].Err)
 }
 
 func TestPacketSourceReturnsData(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	pktgen := NewMockPacketGenerator(ctrl)
 
-	go func() {
-		defer close(done)
-
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		pktgen := NewMockPacketGenerator(ctrl)
-
-		scanRange := &Range{
-			SrcIP:  net.IPv4(192, 168, 0, 1),
-			SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-			Ports: []*PortRange{
-				{
-					StartPort: 22,
-					EndPort:   22,
-				},
+	scanRange := &Range{
+		SrcIP:  net.IPv4(192, 168, 0, 1),
+		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		Ports: []*PortRange{
+			{
+				StartPort: 22,
+				EndPort:   22,
 			},
-		}
-		requests := make(chan *Request)
-		close(requests)
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), scanRange).
-			Return(requests, nil)
+		},
+	}
+	requests := make(chan *Request)
+	close(requests)
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), scanRange).
+		Return(requests, nil)
 
-		data := &packet.BufferData{Buf: gopacket.NewSerializeBuffer()}
-		dataCh := make(chan *packet.BufferData, 1)
-		dataCh <- data
-		close(dataCh)
-		pktgen.EXPECT().Packets(gomock.Not(gomock.Nil()), requests).Return(dataCh)
+	data := &packet.BufferData{Buf: gopacket.NewSerializeBuffer()}
+	dataCh := make(chan *packet.BufferData, 1)
+	dataCh <- data
+	close(dataCh)
+	pktgen.EXPECT().Packets(gomock.Not(gomock.Nil()), requests).Return(dataCh)
 
-		ps := NewPacketSource(reqgen, pktgen)
-		out := ps.Packets(context.Background(), scanRange)
-		result := <-out
-		assert.NoError(t, result.Err)
-		assert.Equal(t, data.Buf, result.Buf)
-	}()
-	waitDone(t, done)
+	ps := NewPacketSource(reqgen, pktgen)
+	results := chanToSlice(t, ps.Packets(context.Background(), scanRange), 1)
+	require.NoError(t, results[0].Err)
+	require.Equal(t, data.Buf, results[0].Buf)
 }
 
 func TestRateLimitScanner(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
-	go func() {
-		defer close(done)
+	ctrl := gomock.NewController(t)
+	scanner := NewMockScanner(ctrl)
 
-		ctrl := gomock.NewController(t)
-		scanner := NewMockScanner(ctrl)
+	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+	expectedResult := &mockScanResult{"id1"}
+	scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
+		Return(expectedResult, nil).AnyTimes()
 
-		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
-		expectedResult := &mockScanResult{"id1"}
-		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
-			Return(expectedResult, nil).AnyTimes()
-
-		rateScanner := NewRateLimitScanner(scanner,
-			ratelimit.New(2, ratelimit.Per(20*time.Millisecond)))
-		timer := time.After(10 * time.Millisecond)
-		count := 0
-	loop:
-		for {
-			select {
-			case <-timer:
-				break loop
-			default:
-				result, err := rateScanner.Scan(context.Background(), req1)
-				assert.NoError(t, err)
-				assert.Equal(t, expectedResult, result)
-				count++
-			}
+	rateScanner := NewRateLimitScanner(scanner,
+		ratelimit.New(2, ratelimit.Per(20*time.Millisecond)))
+	timer := time.After(10 * time.Millisecond)
+	count := 0
+loop:
+	for {
+		select {
+		case <-timer:
+			break loop
+		default:
+			result, err := rateScanner.Scan(context.Background(), req1)
+			require.NoError(t, err)
+			require.Equal(t, expectedResult, result)
+			count++
 		}
-		assert.LessOrEqual(t, count, 2)
-	}()
-	waitDone(t, done)
+	}
+	require.LessOrEqual(t, count, 2)
 }
 
 func TestScanEngineWithRequestGeneratorError(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
-	go func() {
-		defer close(done)
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	scanner := NewMockScanner(ctrl)
+	ctx := context.Background()
 
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		scanner := NewMockScanner(ctrl)
-		ctx := context.Background()
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+		Return(nil, errors.New("generate error"))
+	engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
 
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
-			Return(nil, errors.New("generate error"))
-		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
-
-		_, errc := engine.Start(ctx, &Range{})
-		err := <-errc
-		assert.Error(t, err)
-	}()
-	waitDone(t, done)
+	_, errc := engine.Start(ctx, &Range{})
+	err := <-errc
+	require.Error(t, err)
 }
 
 func TestScanEngineWithRequestError(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
-	go func() {
-		defer close(done)
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	scanner := NewMockScanner(ctrl)
+	ctx := context.Background()
 
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		scanner := NewMockScanner(ctrl)
-		ctx := context.Background()
+	requests := make(chan *Request, 1)
+	requests <- &Request{Err: errors.New("request error")}
+	close(requests)
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+		Return(requests, nil)
+	engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
 
-		requests := make(chan *Request, 1)
-		requests <- &Request{Err: errors.New("request error")}
-		close(requests)
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
-			Return(requests, nil)
-		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
-
-		_, errc := engine.Start(ctx, &Range{})
-		err := <-errc
-		assert.Error(t, err)
-	}()
-	waitDone(t, done)
+	_, errc := engine.Start(ctx, &Range{})
+	err := <-errc
+	require.Error(t, err)
 }
 
 func TestScanEngineWithScannerError(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
-	go func() {
-		defer close(done)
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	scanner := NewMockScanner(ctrl)
+	ctx := context.Background()
 
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		scanner := NewMockScanner(ctrl)
-		ctx := context.Background()
+	requests := make(chan *Request, 1)
+	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+	requests <- req1
+	close(requests)
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+		Return(requests, nil)
+	scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).Return(nil, errors.New("scan error"))
+	engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
 
-		requests := make(chan *Request, 1)
-		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
-		requests <- req1
-		close(requests)
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
-			Return(requests, nil)
-		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).Return(nil, errors.New("scan error"))
-		engine := NewScanEngine(reqgen, scanner, NewResultChan(ctx, 10))
-
-		_, errc := engine.Start(ctx, &Range{})
-		err := <-errc
-		assert.Error(t, err)
-	}()
-	waitDone(t, done)
+	_, errc := engine.Start(ctx, &Range{})
+	err := <-errc
+	require.Error(t, err)
 }
 
 func TestScanEngineWithResults(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan interface{})
-	go func() {
-		defer close(done)
+	ctrl := gomock.NewController(t)
+	reqgen := NewMockRequestGenerator(ctrl)
+	scanner := NewMockScanner(ctrl)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-		ctrl := gomock.NewController(t)
-		reqgen := NewMockRequestGenerator(ctrl)
-		scanner := NewMockScanner(ctrl)
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
+	requests := make(chan *Request, 2)
+	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+	req2 := &Request{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 22}
+	requests <- req1
+	requests <- req2
+	close(requests)
+	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
+		Return(requests, nil)
 
-		requests := make(chan *Request, 2)
-		req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
-		req2 := &Request{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 22}
-		requests <- req1
-		requests <- req2
-		close(requests)
-		reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
-			Return(requests, nil)
+	scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
+		Return(&mockScanResult{"id1"}, nil)
+	scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req2).
+		Return(&mockScanResult{"id2"}, nil)
 
-		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
-			Return(&mockScanResult{"id1"}, nil)
-		scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req2).
-			Return(&mockScanResult{"id2"}, nil)
+	resultCh := NewResultChan(ctx, 10)
+	engine := NewScanEngine(reqgen, scanner, resultCh, WithScanWorkerCount(10))
 
-		resultCh := NewResultChan(ctx, 10)
-		engine := NewScanEngine(reqgen, scanner, resultCh, WithScanWorkerCount(10))
+	done, errc := engine.Start(ctx, &Range{})
+	<-done
+	results := make([]Result, 2)
+	results[0] = <-resultCh.Chan()
+	results[1] = <-resultCh.Chan()
+	cancel()
+	require.Empty(t, errc, "error channel is not empty")
+	result, ok := <-resultCh.Chan()
+	if ok {
+		require.Fail(t, "result channel contains more elements than expected: ", result)
+	}
 
-		done, errc := engine.Start(ctx, &Range{})
-		<-done
-		results := make([]Result, 2)
-		results[0] = <-resultCh.Chan()
-		results[1] = <-resultCh.Chan()
-		cancel()
-		assert.Empty(t, errc, "error channel is not empty")
-		result, ok := <-resultCh.Chan()
-		if ok {
-			assert.Fail(t, "result channel contains more elements than expected: ", result)
-		}
-
-		sort.Slice(results, func(i, j int) bool {
-			return results[i].ID() < results[j].ID()
-		})
-		assert.Equal(t, []Result{
-			&mockScanResult{"id1"},
-			&mockScanResult{"id2"},
-		}, results)
-	}()
-	waitDone(t, done)
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].ID() < results[j].ID()
+	})
+	require.Equal(t, []Result{
+		&mockScanResult{"id1"},
+		&mockScanResult{"id2"},
+	}, results)
 }
 
 type mockScanResult struct {

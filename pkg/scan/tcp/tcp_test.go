@@ -479,9 +479,15 @@ func TestAllFlags(t *testing.T) {
 	}
 }
 
-type mockIPGeneratorFunc func(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error)
+type mockIPGeneratorFunc func(
+	ctx context.Context,
+	r *scan.Range,
+) (<-chan scan.GeneratorResult[net.IP], error)
 
-func (f mockIPGeneratorFunc) IPs(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error) {
+func (f mockIPGeneratorFunc) IPs(
+	ctx context.Context,
+	r *scan.Range,
+) (<-chan scan.GeneratorResult[net.IP], error) {
 	return f(ctx, r)
 }
 
@@ -501,15 +507,18 @@ func BenchmarkTCPScanEngine(b *testing.B) {
 	defer cancel()
 
 	dstIP := net.IPv4(192, 168, 0, 3).To4()
-	ipgen := mockIPGeneratorFunc(func(ctx context.Context, r *scan.Range) (<-chan scan.IPGetter, error) {
-		out := make(chan scan.IPGetter, 100)
+	ipgen := mockIPGeneratorFunc(func(
+		ctx context.Context,
+		_ *scan.Range,
+	) (<-chan scan.GeneratorResult[net.IP], error) {
+		out := make(chan scan.GeneratorResult[net.IP], 100)
 		go func() {
 			defer close(out)
 			for i := 0; i < b.N; i++ {
 				select {
 				case <-ctx.Done():
 					return
-				case out <- scan.WrapIP(dstIP):
+				case out <- scan.GeneratorResult[net.IP]{Value: dstIP}:
 				}
 			}
 		}()
