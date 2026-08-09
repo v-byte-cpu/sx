@@ -9,7 +9,6 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/v-byte-cpu/sx/blob/master/LICENSE)
 [![Build Status](https://github.com/v-byte-cpu/sx/actions/workflows/ci.yml/badge.svg)](https://github.com/v-byte-cpu/sx/actions/workflows/ci.yml)
-[![GoReportCard Status](https://goreportcard.com/badge/github.com/v-byte-cpu/sx)](https://goreportcard.com/report/github.com/v-byte-cpu/sx)
 ![Platform](https://img.shields.io/badge/platform-linux%2FmacOS%2Fdocker-blue)
 
 </div>

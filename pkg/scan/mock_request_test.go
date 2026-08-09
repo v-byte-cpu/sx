@@ -42,10 +42,10 @@ func (m *MockPortGenerator) EXPECT() *MockPortGeneratorMockRecorder {
 }
 
 // Ports mocks base method.
-func (m *MockPortGenerator) Ports(ctx context.Context, r *Range) (<-chan PortGetter, error) {
+func (m *MockPortGenerator) Ports(ctx context.Context, r *Range) (<-chan GeneratorResult[uint16], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ports", ctx, r)
-	ret0, _ := ret[0].(<-chan PortGetter)
+	ret0, _ := ret[0].(<-chan GeneratorResult[uint16])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -81,10 +81,10 @@ func (m *MockIPGenerator) EXPECT() *MockIPGeneratorMockRecorder {
 }
 
 // IPs mocks base method.
-func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan IPGetter, error) {
+func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[net.IP], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IPs", ctx, r)
-	ret0, _ := ret[0].(<-chan IPGetter)
+	ret0, _ := ret[0].(<-chan GeneratorResult[net.IP])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

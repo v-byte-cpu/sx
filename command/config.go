@@ -462,7 +462,7 @@ func (o *genericScanCmdOpts) getLogger(name string, w io.Writer) (logger log.Log
 	return
 }
 
-func (o *genericScanCmdOpts) newScanEngine(ctx context.Context, scanner scan.Scanner) *scan.GenericEngine {
+func (o *genericScanCmdOpts) newScanEngine(ctx context.Context, scanner scan.Scanner) *scan.ScanEngine {
 	if o.rateCount > 0 {
 		scanner = scan.NewRateLimitScanner(scanner,
 			ratelimit.New(o.rateCount, ratelimit.Per(o.rateWindow)))

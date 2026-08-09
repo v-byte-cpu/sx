@@ -4,7 +4,6 @@ package scan
 
 import (
 	"context"
-	"sync"
 
 	"github.com/google/gopacket"
 	"github.com/v-byte-cpu/sx/pkg/packet"
@@ -38,28 +37,24 @@ func (g *packetGenerator) Packets(ctx context.Context, in <-chan *Request) <-cha
 				if !ok {
 					return
 				}
-				if r.Err != nil {
-					writeBufToChan(ctx, out, &packet.BufferData{Err: r.Err})
-					continue
+				if !g.sendPacket(ctx, out, r) {
+					return
 				}
-				buf := packet.NewSerializeBuffer()
-				if err := g.filler.Fill(buf, r); err != nil {
-					writeBufToChan(ctx, out, &packet.BufferData{Err: err})
-					continue
-				}
-				writeBufToChan(ctx, out, &packet.BufferData{Buf: buf})
 			}
 		}
 	}()
 	return out
 }
 
-func writeBufToChan(ctx context.Context, out chan *packet.BufferData, buf *packet.BufferData) {
-	select {
-	case <-ctx.Done():
-		return
-	case out <- buf:
+func (g *packetGenerator) sendPacket(ctx context.Context, out chan<- *packet.BufferData, r *Request) bool {
+	if r.Err != nil {
+		return sendContext(ctx, out, &packet.BufferData{Err: r.Err})
 	}
+	buf := packet.NewSerializeBuffer()
+	if err := g.filler.Fill(buf, r); err != nil {
+		return sendContext(ctx, out, &packet.BufferData{Err: err})
+	}
+	return sendContext(ctx, out, &packet.BufferData{Buf: buf})
 }
 
 func NewPacketMultiGenerator(filler PacketFiller, numWorkers int) PacketGenerator {
@@ -77,39 +72,5 @@ func (g *packetMultiGenerator) Packets(ctx context.Context, in <-chan *Request) 
 	for i := 0; i < g.numWorkers; i++ {
 		workers[i] = g.gen.Packets(ctx, in)
 	}
-	return MergeBufferDataChan(ctx, workers...)
-}
-
-// generics would be helpful :)
-func MergeBufferDataChan(ctx context.Context, channels ...<-chan *packet.BufferData) <-chan *packet.BufferData {
-	var wg sync.WaitGroup
-	wg.Add(len(channels))
-
-	out := make(chan *packet.BufferData, len(channels)*100)
-	multiplex := func(c <-chan *packet.BufferData) {
-		defer wg.Done()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case e, ok := <-c:
-				if !ok {
-					return
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case out <- e:
-				}
-			}
-		}
-	}
-	for _, c := range channels {
-		go multiplex(c)
-	}
-	go func() {
-		wg.Wait()
-		close(out)
-	}()
-	return out
+	return mergeChannels(ctx, len(workers)*100, workers...)
 }
