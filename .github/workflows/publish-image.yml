@@ -1,0 +1,315 @@
+name: publish-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Published release tag to publish to GHCR."
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: publish-image-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+      artifact-metadata: write
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Validate published release
+        id: release
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          WORKFLOW_REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${WORKFLOW_REF_NAME}" != "${DEFAULT_BRANCH}" ]]; then
+            echo "run this workflow from the default branch: ${DEFAULT_BRANCH}" >&2
+            exit 1
+          fi
+
+          if [[ ! "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo "unsupported release tag: ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          release_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}")"
+          draft="$(jq -r '.draft' <<< "${release_json}")"
+          prerelease="$(jq -r '.prerelease' <<< "${release_json}")"
+          published_at="$(jq -r '.published_at' <<< "${release_json}")"
+
+          if [[ "${draft}" != "false" || -z "${published_at}" || "${published_at}" == "null" ]]; then
+            echo "release ${RELEASE_TAG} is not published" >&2
+            exit 1
+          fi
+
+          expected_prerelease=false
+          if [[ "${RELEASE_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            expected_prerelease=true
+          fi
+          if [[ "${prerelease}" != "${expected_prerelease}" ]]; then
+            echo "release prerelease flag does not match tag ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          echo "version=${RELEASE_TAG#v}" >> "${GITHUB_OUTPUT}"
+          echo "prerelease=${prerelease}" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: refs/tags/${{ inputs.release_tag }}
+          fetch-depth: 1
+
+      - name: Validate release source
+        id: source
+        run: |
+          set -euo pipefail
+
+          if ! grep -Eq '^ARG[[:space:]]+VERSION(=|[[:space:]]|$)' Dockerfile || \
+             ! grep -Eq '^ARG[[:space:]]+COMMIT(=|[[:space:]]|$)' Dockerfile; then
+            echo "release Dockerfile does not support VERSION and COMMIT build arguments" >&2
+            exit 1
+          fi
+
+          echo "commit=$(git rev-parse HEAD)" >> "${GITHUB_OUTPUT}"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}},value=${{ inputs.release_tag }}
+            type=raw,value=latest,enable=${{ steps.release.outputs.prerelease == 'false' }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Fast, modern, easy-to-use network scanner
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+          annotations: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.description=Fast, modern, easy-to-use network scanner
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+
+      - name: Inspect existing version tag
+        id: existing
+        env:
+          EXPECTED_COMMIT: ${{ steps.source.outputs.commit }}
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          set -euo pipefail
+
+          image="${REGISTRY}/${IMAGE_NAME}:${EXPECTED_VERSION}"
+          set +e
+          manifest_json="$(docker buildx imagetools inspect "${image}" --format '{{json .Manifest}}' 2>&1)"
+          inspect_status=$?
+          set -e
+
+          if (( inspect_status != 0 )); then
+            if grep -Eiq 'manifest unknown|name unknown|not found|does not exist' <<< "${manifest_json}"; then
+              echo "exists=false" >> "${GITHUB_OUTPUT}"
+              exit 0
+            fi
+            echo "${manifest_json}" >&2
+            exit "${inspect_status}"
+          fi
+
+          digest="$(jq -r '.digest // ""' <<< "${manifest_json}")"
+          actual_version="$(jq -r '.annotations["org.opencontainers.image.version"] // ""' <<< "${manifest_json}")"
+          actual_commit="$(jq -r '.annotations["org.opencontainers.image.revision"] // ""' <<< "${manifest_json}")"
+
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "existing image has an invalid digest: ${digest}" >&2
+            exit 1
+          fi
+          if [[ "${actual_version}" != "${EXPECTED_VERSION}" || "${actual_commit}" != "${EXPECTED_COMMIT}" ]]; then
+            echo "existing image metadata does not match release source" >&2
+            exit 1
+          fi
+          if ! jq -e 'any(.manifests[]?; .platform.os == "linux" and .platform.architecture == "amd64")' \
+            <<< "${manifest_json}" >/dev/null; then
+            echo "existing image is missing linux/amd64" >&2
+            exit 1
+          fi
+          if ! jq -e 'any(.manifests[]?; .platform.os == "linux" and .platform.architecture == "arm64")' \
+            <<< "${manifest_json}" >/dev/null; then
+            echo "existing image is missing linux/arm64" >&2
+            exit 1
+          fi
+
+          echo "exists=true" >> "${GITHUB_OUTPUT}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build and push Docker image
+        if: steps.existing.outputs.exists != 'true'
+        id: push
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          build-args: |
+            VERSION=${{ steps.release.outputs.version }}
+            COMMIT=${{ steps.source.outputs.commit }}
+          cache-from: type=gha,scope=docker-release
+          cache-to: type=gha,scope=docker-release,mode=max
+          provenance: mode=max
+
+      - name: Resolve image digest
+        id: image
+        env:
+          BUILT_DIGEST: ${{ steps.push.outputs.digest }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+          IMAGE_EXISTS: ${{ steps.existing.outputs.exists }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${IMAGE_EXISTS}" == "true" ]]; then
+            digest="${EXISTING_DIGEST}"
+            reused=true
+          else
+            digest="${BUILT_DIGEST}"
+            reused=false
+          fi
+          if [[ ! "${digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "image digest is invalid: ${digest}" >&2
+            exit 1
+          fi
+
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+          echo "reused=${reused}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update latest tag
+        if: steps.release.outputs.prerelease == 'false' && steps.image.outputs.reused == 'true'
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          docker buildx imagetools create \
+            --tag "${REGISTRY}/${IMAGE_NAME}:latest" \
+            "${REGISTRY}/${IMAGE_NAME}@${DIGEST}"
+
+      - name: Verify latest tag
+        if: steps.release.outputs.prerelease == 'false'
+        env:
+          EXPECTED_DIGEST: ${{ steps.image.outputs.digest }}
+        run: |
+          set -euo pipefail
+
+          latest_manifest="$(docker buildx imagetools inspect \
+            "${REGISTRY}/${IMAGE_NAME}:latest" --format '{{json .Manifest}}')"
+          latest_digest="$(jq -r '.digest // ""' <<< "${latest_manifest}")"
+          if [[ "${latest_digest}" != "${EXPECTED_DIGEST}" ]]; then
+            echo "latest points to ${latest_digest}, expected ${EXPECTED_DIGEST}" >&2
+            exit 1
+          fi
+
+      - name: Verify published image
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.release.outputs.version }}
+          EXPECTED_VERSION: ${{ steps.release.outputs.version }}
+          EXPECTED_COMMIT: ${{ steps.source.outputs.commit }}
+        run: |
+          set -euo pipefail
+
+          version_output="$(docker run --rm --pull always --platform linux/amd64 "${IMAGE}" --version)"
+          grep -Fqx "sx version ${EXPECTED_VERSION}" <<< "${version_output}"
+          grep -Fqx "commit: ${EXPECTED_COMMIT}" <<< "${version_output}"
+
+      - name: Check GitHub attestation
+        id: attestation
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          count="$(gh api \
+            "repos/${GITHUB_REPOSITORY}/attestations/${DIGEST}?predicate_type=provenance&per_page=1" \
+            --jq '.attestations | length')"
+          if [[ "${count}" == "0" ]]; then
+            echo "exists=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "exists=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Attest Docker image
+        if: steps.attestation.outputs.exists != 'true'
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.image.outputs.digest }}
+          push-to-registry: true
+
+      - name: Verify GitHub attestation
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          gh attestation verify \
+            "oci://${REGISTRY}/${IMAGE_NAME}@${DIGEST}" \
+            --repo "${GITHUB_REPOSITORY}"
+
+      - name: Summarize Docker image
+        env:
+          DIGEST: ${{ steps.image.outputs.digest }}
+          REUSED: ${{ steps.image.outputs.reused }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "# Docker Image"
+            echo
+            echo "- Digest: \`${DIGEST}\`"
+            echo "- Existing digest reused: \`${REUSED}\`"
+            echo "- Tags:"
+            while IFS= read -r tag; do
+              echo "  - \`${tag}\`"
+            done <<< "${TAGS}"
+          } >> "${GITHUB_STEP_SUMMARY}"

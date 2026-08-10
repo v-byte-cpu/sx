@@ -18,6 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       go_ci: ${{ steps.filter.outputs.go_ci }}
+      docker_ci: ${{ steps.filter.outputs.docker_ci }}
 
     steps:
       - name: Checkout repository
@@ -35,6 +36,13 @@ jobs:
               - '.golangci.yml'
               - '.github/workflows/**'
               - '.github/scripts/**'
+            docker_ci:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+              - '.dockerignore'
+              - '.github/workflows/**'
 
   go:
     needs: changes
@@ -118,6 +126,56 @@ jobs:
 
       - name: Run Go build
         run: go build -ldflags "-w -s" -o "${RUNNER_TEMP}/sx"
+
+  docker:
+    needs: changes
+    if: needs.changes.outputs.docker_ci == 'true'
+    name: docker (${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            cache_scope: docker-amd64
+          - platform: linux/arm64
+            cache_scope: docker-arm64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: sx:ci
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.cache_scope }}
+          cache-to: type=gha,scope=${{ matrix.cache_scope }},mode=max
+          provenance: false
+
+      - name: Verify Docker image
+        env:
+          PLATFORM: ${{ matrix.platform }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          version_output="$(docker run --rm --platform "${PLATFORM}" sx:ci --version)"
+          grep -Fqx "sx version ci" <<< "${version_output}"
+          grep -Fqx "commit: ${EXPECTED_COMMIT}" <<< "${version_output}"
 
   release-helper:
     runs-on: ubuntu-latest
