@@ -1,3 +1,5 @@
 sx
 Dockerfile
 .dockerignore
+.git
+.github
