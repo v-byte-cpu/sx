@@ -4,6 +4,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"strings"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestPacketScanCmdOptsInitCliFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
-	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "192.168.0.1", opts.rawSrcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
@@ -49,6 +50,13 @@ func TestPacketScanCmdOptsParseRawOptions(t *testing.T) {
 	require.Equal(t, 7*time.Second, opts.rateWindow)
 }
 
+func TestPacketScanCmdOptsParseScopedIPv6Source(t *testing.T) {
+	t.Parallel()
+	opts := &packetScanCmdOpts{rawSrcIP: "fe80::1%en0"}
+	require.NoError(t, opts.parseRawOptions())
+	require.Equal(t, netip.MustParseAddr("fe80::1%en0"), opts.srcIP)
+}
+
 func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 	t.Parallel()
 	var opts ipScanCmdOpts
@@ -64,7 +72,7 @@ func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
-	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "192.168.0.1", opts.rawSrcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
@@ -72,7 +80,24 @@ func TestIPScanCmdOptsInitCliFlags(t *testing.T) {
 
 	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
-	require.Equal(t, "arp.cache", opts.arpCacheFile)
+	require.Equal(t, "arp.cache", opts.neighborCacheFile)
+}
+
+func TestIPScanCmdOptsNeighborCacheCompatibilityFlags(t *testing.T) {
+	t.Parallel()
+
+	var current ipScanCmdOpts
+	currentCmd := &cobra.Command{}
+	current.initCliFlags(currentCmd)
+	require.NoError(t, currentCmd.ParseFlags(strings.Fields("--neighbor-cache neighbors.jsonl --ipv6")))
+	require.Equal(t, "neighbors.jsonl", current.cacheFile())
+	require.True(t, current.ipv6)
+
+	var deprecated ipScanCmdOpts
+	deprecatedCmd := &cobra.Command{}
+	deprecated.initCliFlags(deprecatedCmd)
+	require.NoError(t, deprecatedCmd.ParseFlags(strings.Fields("--arp-cache arp.jsonl")))
+	require.Equal(t, "arp.jsonl", deprecated.cacheFile())
 }
 
 func TestIPScanCmdOptsParseRawOptions(t *testing.T) {
@@ -111,7 +136,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
-	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "192.168.0.1", opts.rawSrcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
@@ -119,7 +144,7 @@ func TestIPPortScanCmdOptsInitCliFlags(t *testing.T) {
 
 	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
-	require.Equal(t, "arp.cache", opts.arpCacheFile)
+	require.Equal(t, "arp.cache", opts.neighborCacheFile)
 
 	require.Equal(t, "23-57,71-2733", opts.rawPortRanges)
 	require.Equal(t, "ports.txt", opts.portFile)
@@ -189,7 +214,7 @@ func TestGenericScanCmdOptsParseRawOptions(t *testing.T) {
 	require.Equal(t, 7*time.Second, opts.rateWindow)
 }
 
-func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {
+func TestIPScanCmdOptsIsNeighborCacheFromStdin(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name     string
@@ -216,12 +241,12 @@ func TestIPScanCmdOptsIsARPCacheFromStdin(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.expected, tt.opts.isARPCacheFromStdin())
+			require.Equal(t, tt.expected, tt.opts.isNeighborCacheFromStdin())
 		})
 	}
 }
 
-func TestIPScanCmdOptsValidateARPStdin(t *testing.T) {
+func TestIPScanCmdOptsValidateNeighborStdin(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
@@ -271,7 +296,7 @@ func TestIPScanCmdOptsValidateARPStdin(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			err := tt.opts.validateARPStdin()
+			err := tt.opts.validateNeighborStdin()
 			if tt.shouldErr {
 				require.Error(t, err)
 			} else {
@@ -295,6 +320,12 @@ func TestIPScanCmdOptsParseDstSubnet(t *testing.T) {
 			opts:     ipScanCmdOpts{},
 			args:     []string{"192.168.0.1"},
 			expected: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+		},
+		{
+			name:     "ValidIPv6Host",
+			opts:     ipScanCmdOpts{},
+			args:     []string{"2001:db8::1"},
+			expected: &net.IPNet{IP: net.ParseIP("2001:db8::1"), Mask: net.CIDRMask(128, 128)},
 		},
 		{
 			name:     "ValidDstSubnet",
@@ -330,32 +361,42 @@ func TestIPScanCmdOptsParseDstSubnet(t *testing.T) {
 	}
 }
 
-func TestGenericScanCmdOptsParseDstSubnet(t *testing.T) {
+func TestIPScanCmdOptsParseDstPrefixIPv6Scoped(t *testing.T) {
+	t.Parallel()
+
+	prefix, zone, err := (&ipScanCmdOpts{}).parseDstPrefix([]string{"fe80::1%en0"})
+
+	require.NoError(t, err)
+	require.Equal(t, netip.MustParsePrefix("fe80::1/128"), prefix)
+	require.Equal(t, "en0", zone)
+}
+
+func TestGenericScanCmdOptsParseDstPrefix(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name      string
 		opts      genericScanCmdOpts
 		args      []string
-		expected  *net.IPNet
+		expected  netip.Prefix
 		shouldErr bool
 	}{
 		{
 			name:     "ValidDstHost",
 			opts:     genericScanCmdOpts{},
 			args:     []string{"192.168.0.1"},
-			expected: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+			expected: netip.MustParsePrefix("192.168.0.1/32"),
 		},
 		{
 			name:     "ValidDstSubnet",
 			opts:     genericScanCmdOpts{},
 			args:     []string{"10.0.0.1/16"},
-			expected: &net.IPNet{IP: net.IPv4(10, 0, 0, 0).To4(), Mask: net.IPv4Mask(255, 255, 0, 0)},
+			expected: netip.MustParsePrefix("10.0.0.0/16"),
 		},
 		{
 			name:     "IPFile",
 			opts:     genericScanCmdOpts{ipFile: "ip_file"},
 			args:     []string{},
-			expected: nil,
+			expected: netip.Prefix{},
 		},
 		{
 			name:      "NoIPHosts",
@@ -368,12 +409,13 @@ func TestGenericScanCmdOptsParseDstSubnet(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			result, err := tt.opts.parseDstSubnet(tt.args)
+			result, zone, err := tt.opts.parseDstPrefix(tt.args)
 			if tt.shouldErr {
 				require.Error(t, err)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)
+				require.Empty(t, zone)
 			}
 		})
 	}
@@ -394,7 +436,7 @@ func TestGenericScanCmdOptsParseScanRange(t *testing.T) {
 			args: []string{"192.168.0.1"},
 			expected: &scan.Range{
 				Ports:     []*scan.PortRange{{StartPort: 22, EndPort: 100}},
-				DstSubnet: &net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.IPv4Mask(255, 255, 255, 255)},
+				DstPrefix: netip.MustParsePrefix("192.168.0.1/32"),
 			},
 		},
 		{
@@ -403,7 +445,7 @@ func TestGenericScanCmdOptsParseScanRange(t *testing.T) {
 			args: []string{"10.0.0.1/16"},
 			expected: &scan.Range{
 				Ports:     []*scan.PortRange{{StartPort: 22, EndPort: 100}},
-				DstSubnet: &net.IPNet{IP: net.IPv4(10, 0, 0, 0).To4(), Mask: net.IPv4Mask(255, 255, 0, 0)},
+				DstPrefix: netip.MustParsePrefix("10.0.0.0/16"),
 			},
 		},
 		{
@@ -843,6 +885,20 @@ func TestParseExcludeFileWithInvalidFile(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestParseExcludeFileIPv6(t *testing.T) {
+	t.Parallel()
+	container, err := parseExcludeFile(func() (io.ReadCloser, error) {
+		return io.NopCloser(strings.NewReader("2001:db8::/126")), nil
+	})
+	require.NoError(t, err)
+	contained, err := container.Contains(netip.MustParseAddr("2001:db8::2"))
+	require.NoError(t, err)
+	require.True(t, contained)
+	contained, err = container.Contains(netip.MustParseAddr("2001:db8::4"))
+	require.NoError(t, err)
+	require.False(t, contained)
+}
+
 func TestParseExcludeFile(t *testing.T) {
 	t.Parallel()
 
@@ -948,7 +1004,11 @@ func TestParseExcludeFile(t *testing.T) {
 					return
 				}
 				for _, ip := range tt.contains {
-					ok, err := ips.Contains(ip)
+					addr, valid := netip.AddrFromSlice(ip)
+					if !assert.True(t, valid) {
+						return
+					}
+					ok, err := ips.Contains(addr.Unmap())
 					if !assert.NoError(t, err) {
 						return
 					}

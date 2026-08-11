@@ -1,7 +1,6 @@
 package command
 
 import (
-	"net"
 	"strings"
 	"testing"
 	"time"
@@ -51,7 +50,7 @@ func TestARPCmdOptsInitCliFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
-	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "192.168.0.1", opts.rawSrcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)

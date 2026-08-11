@@ -10,7 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 	"github.com/v-byte-cpu/sx/pkg/scan/tcp"
 )
 
@@ -102,7 +102,7 @@ type tcpFlagsCmdOpts struct {
 }
 
 func (o *tcpFlagsCmdOpts) initCliFlags(cmd *cobra.Command) {
-	o.ipPortScanCmdOpts.initCliFlags(cmd)
+	o.tcpCmdOpts.initCliFlags(cmd)
 	cmd.Flags().StringVar(&o.rawTCPFlags, "flags", "", "set TCP flags")
 }
 
@@ -144,6 +144,32 @@ func parseTCPFlags(tcpFlags string) ([]string, error) {
 
 type tcpCmdOpts struct {
 	ipPortScanCmdOpts
+	hopLimit      uint8
+	nextHeader    uint8
+	payloadLength uint16
+	cmd           *cobra.Command
+}
+
+func (o *tcpCmdOpts) initCliFlags(cmd *cobra.Command) {
+	o.ipPortScanCmdOpts.initCliFlags(cmd)
+	o.cmd = cmd
+	cmd.Flags().Uint8Var(&o.hopLimit, flagHopLimit, 64, "set IPv6 Hop Limit field")
+	cmd.Flags().Uint8Var(&o.nextHeader, flagNextHeader, 6, "set IPv6 Next Header field")
+	cmd.Flags().Uint16Var(&o.payloadLength, flagPayloadLength, 0, "set IPv6 Payload Length field (calculated by default)")
+}
+
+func (o *tcpCmdOpts) parseOptions(scanName string, args []string) error {
+	ipv6 := o.ipv6
+	if prefix, _, err := o.parseDstPrefix(args); err == nil && prefix.IsValid() {
+		ipv6 = prefix.Addr().Is6()
+	}
+	if err := validateIPVersionFlags(o.cmd, ipv6, nil, []string{flagHopLimit, flagNextHeader, flagPayloadLength}); err != nil {
+		return err
+	}
+	if err := o.ipPortScanCmdOpts.parseOptions(scanName, args); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, opts ...tcpScanConfigOption) *tcp.ScanMethod {
@@ -153,9 +179,13 @@ func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, opts ...tcpScanConfig
 	}
 	reqgen := o.newIPPortGenerator()
 	if o.cache != nil {
-		reqgen = arp.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
+		reqgen = neighbor.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
 	}
-	c.packetFillerOpts = append(c.packetFillerOpts, tcp.WithFillerVPNmode(o.vpnMode))
+	c.packetFillerOpts = append(c.packetFillerOpts,
+		tcp.WithFillerVPNmode(o.vpnMode),
+		tcp.WithHopLimit(o.hopLimit),
+		tcp.WithNextHeader(o.nextHeader),
+		tcp.WithPayloadLength(o.payloadLength))
 	pktgen := scan.NewPacketMultiGenerator(tcp.NewPacketFiller(c.packetFillerOpts...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
@@ -163,7 +193,9 @@ func (o *tcpCmdOpts) newTCPScanMethod(ctx context.Context, opts ...tcpScanConfig
 		c.scanName, psrc, results,
 		tcp.WithPacketFilterFunc(c.packetFilter),
 		tcp.WithPacketFlagsFunc(c.packetFlags),
-		tcp.WithScanVPNmode(o.vpnMode))
+		tcp.WithScanVPNmode(o.vpnMode),
+		tcp.WithScanIPv6(o.ipv6),
+		tcp.WithScanZone(o.scanRange.Interface.Name))
 }
 
 type tcpScanConfig struct {

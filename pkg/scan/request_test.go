@@ -1,12 +1,12 @@
 package scan
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"math/big"
 	"net"
+	"net/netip"
 	"sort"
 	"strings"
 	"testing"
@@ -18,12 +18,9 @@ import (
 
 func newScanRange(opts ...scanRangeOption) *Range {
 	sr := &Range{
-		SrcIP:  net.IPv4(192, 168, 0, 3),
-		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
-		DstSubnet: &net.IPNet{
-			IP:   net.IPv4(192, 168, 0, 0),
-			Mask: net.CIDRMask(24, 32),
-		},
+		SrcIP:     ip4(192, 168, 0, 3),
+		SrcMAC:    net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
+		DstPrefix: netip.PrefixFrom(ip4(192, 168, 0, 0), 24),
 		Ports: []*PortRange{
 			{
 				StartPort: 22,
@@ -45,15 +42,15 @@ func withPorts(ports []*PortRange) scanRangeOption {
 	}
 }
 
-func withSubnet(subnet *net.IPNet) scanRangeOption {
+func withPrefix(subnet netip.Prefix) scanRangeOption {
 	return func(sr *Range) {
-		sr.DstSubnet = subnet
+		sr.DstPrefix = subnet
 	}
 }
 
 func newScanRequest(opts ...scanRequestOption) *Request {
 	r := &Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3),
+		SrcIP:  ip4(192, 168, 0, 3),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 	}
 	for _, o := range opts {
@@ -64,7 +61,7 @@ func newScanRequest(opts ...scanRequestOption) *Request {
 
 type scanRequestOption func(sr *Request)
 
-func withDstIP(dstIP net.IP) scanRequestOption {
+func withDstIP(dstIP netip.Addr) scanRequestOption {
 	return func(sr *Request) {
 		sr.DstIP = dstIP
 	}
@@ -96,8 +93,8 @@ func generatedPort(value uint16) GeneratorResult[uint16] {
 	return GeneratorResult[uint16]{Value: value}
 }
 
-func generatedIP(value net.IP) GeneratorResult[net.IP] {
-	return GeneratorResult[net.IP]{Value: value}
+func generatedIP(value netip.Addr) GeneratorResult[netip.Addr] {
+	return GeneratorResult[netip.Addr]{Value: value}
 }
 
 func generationError[T any](err error) GeneratorResult[T] {
@@ -279,43 +276,43 @@ func TestIPGenerator(t *testing.T) {
 	tests := []struct {
 		name      string
 		scanRange *Range
-		expected  []GeneratorResult[net.IP]
+		expected  []GeneratorResult[netip.Addr]
 		err       bool
 	}{
 		{
 			name:      "NilSubnet",
-			scanRange: newScanRange(withSubnet(nil)),
+			scanRange: newScanRange(withPrefix(netip.Prefix{})),
 			err:       true,
 		},
 		{
 			name: "OneIP",
 			scanRange: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1), Mask: net.CIDRMask(32, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(192, 168, 0, 1), 32)),
 			),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1).To4()),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
 			},
 		},
 		{
 			name: "TwoIPs",
 			scanRange: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(1, 0, 0, 1), Mask: net.CIDRMask(31, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(1, 0, 0, 1), 31)),
 			),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(1, 0, 0, 0).To4()),
-				generatedIP(net.IPv4(1, 0, 0, 1).To4()),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(1, 0, 0, 0)),
+				generatedIP(ip4(1, 0, 0, 1)),
 			},
 		},
 		{
 			name: "FourIPs",
 			scanRange: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 1), Mask: net.CIDRMask(30, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(10, 0, 0, 1), 30)),
 			),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(10, 0, 0, 0).To4()),
-				generatedIP(net.IPv4(10, 0, 0, 1).To4()),
-				generatedIP(net.IPv4(10, 0, 0, 2).To4()),
-				generatedIP(net.IPv4(10, 0, 0, 3).To4()),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(10, 0, 0, 0)),
+				generatedIP(ip4(10, 0, 0, 1)),
+				generatedIP(ip4(10, 0, 0, 2)),
+				generatedIP(ip4(10, 0, 0, 3)),
 			},
 		},
 	}
@@ -334,7 +331,7 @@ func TestIPGenerator(t *testing.T) {
 			require.NoError(t, err)
 			result := collectChannel(ips)
 			sort.Slice(result, func(i, j int) bool {
-				return bytes.Compare(result[i].Value, result[j].Value) < 1
+				return result[i].Value.Less(result[j].Value)
 			})
 			require.Equal(t, tt.expected, result)
 		})
@@ -354,68 +351,68 @@ func TestIPPortGenerator(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		ips      []GeneratorResult[net.IP]
+		ips      []GeneratorResult[netip.Addr]
 		ports    []GeneratorResult[uint16]
 		expected []*Request
 	}{
 		{
 			name:  "OneIpOnePort",
-			ips:   []GeneratorResult[net.IP]{generatedIP(net.IPv4(192, 168, 0, 1))},
+			ips:   []GeneratorResult[netip.Addr]{generatedIP(ip4(192, 168, 0, 1))},
 			ports: []GeneratorResult[uint16]{generatedPort(888)},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(888)),
 			},
 		},
 		{
 			name:  "OneIpTwoPorts",
-			ips:   []GeneratorResult[net.IP]{generatedIP(net.IPv4(192, 168, 0, 1))},
+			ips:   []GeneratorResult[netip.Addr]{generatedIP(ip4(192, 168, 0, 1))},
 			ports: []GeneratorResult[uint16]{generatedPort(888), generatedPort(889)},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(889)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(889)),
 			},
 		},
 		{
 			name: "ThreeIpsOnePort",
-			ips: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generatedIP(net.IPv4(192, 168, 0, 2)),
-				generatedIP(net.IPv4(192, 168, 0, 3)),
+			ips: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generatedIP(ip4(192, 168, 0, 2)),
+				generatedIP(ip4(192, 168, 0, 3)),
 			},
 			ports: []GeneratorResult[uint16]{generatedPort(888)},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2)), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 3)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 2)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 3)), withDstPort(888)),
 			},
 		},
 		{
 			name: "TwoIpsTwoPorts",
-			ips: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generatedIP(net.IPv4(192, 168, 0, 2)),
+			ips: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generatedIP(ip4(192, 168, 0, 2)),
 			},
 			ports: []GeneratorResult[uint16]{generatedPort(888), generatedPort(889)},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2)), withDstPort(888)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(889)),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2)), withDstPort(889)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 2)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(889)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 2)), withDstPort(889)),
 			},
 		},
 		{
 			name: "IPError",
-			ips: []GeneratorResult[net.IP]{
-				generationError[net.IP](errors.New("ip error")),
+			ips: []GeneratorResult[netip.Addr]{
+				generationError[netip.Addr](errors.New("ip error")),
 			},
 			ports: []GeneratorResult[uint16]{generatedPort(888)},
 			expected: []*Request{
-				newScanRequest(withDstIP(nil), withDstPort(888), withError(errors.New("ip error"))),
+				newScanRequest(withDstIP(netip.Addr{}), withDstPort(888), withError(errors.New("ip error"))),
 			},
 		},
 		{
 			name: "PortError",
-			ips:  []GeneratorResult[net.IP]{generatedIP(net.IPv4(192, 168, 0, 1))},
+			ips:  []GeneratorResult[netip.Addr]{generatedIP(ip4(192, 168, 0, 1))},
 			ports: []GeneratorResult[uint16]{
 				generationError[uint16](errors.New("port error")),
 			},
@@ -425,14 +422,14 @@ func TestIPPortGenerator(t *testing.T) {
 		},
 		{
 			name: "ValidPortAfterPortError",
-			ips:  []GeneratorResult[net.IP]{generatedIP(net.IPv4(192, 168, 0, 1))},
+			ips:  []GeneratorResult[netip.Addr]{generatedIP(ip4(192, 168, 0, 1))},
 			ports: []GeneratorResult[uint16]{
 				generationError[uint16](errors.New("port error")),
 				generatedPort(888),
 			},
 			expected: []*Request{
 				{Err: errors.New("port error")},
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1)), withDstPort(888)),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1)), withDstPort(888)),
 			},
 		},
 	}
@@ -448,8 +445,8 @@ func TestIPPortGenerator(t *testing.T) {
 			ctx := context.Background()
 			scanRange := newScanRange()
 			ipgen.EXPECT().IPs(ctx, scanRange).
-				DoAndReturn(func(ctx context.Context, r *Range) (<-chan GeneratorResult[net.IP], error) {
-					ips := make(chan GeneratorResult[net.IP], len(tt.ips))
+				DoAndReturn(func(ctx context.Context, r *Range) (<-chan GeneratorResult[netip.Addr], error) {
+					ips := make(chan GeneratorResult[netip.Addr], len(tt.ips))
 					for _, ip := range tt.ips {
 						ips <- ip
 					}
@@ -526,38 +523,63 @@ func TestIPRequestGenerator(t *testing.T) {
 	}{
 		{
 			name:  "NilSubnet",
-			input: newScanRange(withSubnet(nil)),
+			input: newScanRange(withPrefix(netip.Prefix{})),
 			err:   true,
 		},
 		{
 			name: "OneIP",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(32, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(192, 168, 0, 1), 32)),
 			),
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4())),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1))),
 			},
+		},
+		{
+			name: "OneIPv6",
+			input: newScanRange(
+				withPrefix(netip.MustParsePrefix("2001:db8::1/128")),
+			),
+			expected: []*Request{
+				newScanRequest(withDstIP(netip.MustParseAddr("2001:db8::1"))),
+			},
+		},
+		{
+			name: "ScopedIPv6",
+			input: func() *Range {
+				r := newScanRange(withPrefix(netip.MustParsePrefix("fe80::1/128")))
+				r.DstZone = "en0"
+				return r
+			}(),
+			expected: []*Request{
+				newScanRequest(withDstIP(netip.MustParseAddr("fe80::1%en0"))),
+			},
+		},
+		{
+			name:  "IPv6RangeTooLarge",
+			input: newScanRange(withPrefix(netip.MustParsePrefix("2001:db8::/95"))),
+			err:   true,
 		},
 		{
 			name: "TwoIPs",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(31, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(192, 168, 0, 1), 31)),
 			),
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4())),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4())),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 0))),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1))),
 			},
 		},
 		{
 			name: "FourIPs",
 			input: newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(192, 168, 0, 1).To4(), Mask: net.CIDRMask(30, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(192, 168, 0, 1), 30)),
 			),
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 0).To4())),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 2).To4())),
-				newScanRequest(withDstIP(net.IPv4(192, 168, 0, 3).To4())),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 0))),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 1))),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 2))),
+				newScanRequest(withDstIP(ip4(192, 168, 0, 3))),
 			},
 		},
 	}
@@ -576,9 +598,7 @@ func TestIPRequestGenerator(t *testing.T) {
 			require.NoError(t, err)
 			result := collectChannel(pairs)
 			sort.Slice(result, func(i, j int) bool {
-				return bytes.Compare(
-					result[i].DstIP,
-					result[j].DstIP) < 1
+				return result[i].DstIP.Less(result[j].DstIP)
 			})
 			require.Equal(t, tt.expected, result)
 		})
@@ -608,14 +628,14 @@ func TestFileIPPortGenerator(t *testing.T) {
 			name:  "OneIPPort",
 			input: `{"ip":"192.168.0.1","port":888}`,
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 			},
 		},
 		{
 			name:  "OneIPPortWithUnknownField",
 			input: `{"ip":"192.168.0.1","port":888,"abc":"field"}`,
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 			},
 		},
 		{
@@ -625,8 +645,8 @@ func TestFileIPPortGenerator(t *testing.T) {
 				`{"ip":"192.168.0.2","port":222}`,
 			}, "\n"),
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
-				{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 222},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 2), DstPort: 222},
 			},
 		},
 		{
@@ -643,7 +663,7 @@ func TestFileIPPortGenerator(t *testing.T) {
 				`{"ip":"192`,
 			}, "\n"),
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 				{Err: ErrJSON},
 			},
 		},
@@ -655,7 +675,7 @@ func TestFileIPPortGenerator(t *testing.T) {
 				`{"ip":"192.168.0.3","port":888}`,
 			}, "\n"),
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 				{Err: ErrJSON},
 			},
 		},
@@ -680,7 +700,7 @@ func TestFileIPPortGenerator(t *testing.T) {
 				`{"ip":"192.168.0.3"}`,
 			}, "\n"),
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 				{Err: ErrPort},
 			},
 		},
@@ -691,7 +711,7 @@ func TestFileIPPortGenerator(t *testing.T) {
 				`{"port":888}`,
 			}, "\n"),
 			expected: []*Request{
-				{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 888},
+				{DstIP: ip4(192, 168, 0, 1), DstPort: 888},
 				{Err: ErrIP},
 			},
 		},
@@ -699,14 +719,14 @@ func TestFileIPPortGenerator(t *testing.T) {
 			name:  "OneIPPortWithSrcIPandSrcMAC",
 			input: `{"ip":"192.168.0.1","port":888}`,
 			scanRange: &Range{
-				SrcIP:  net.IPv4(192, 168, 0, 3),
+				SrcIP:  ip4(192, 168, 0, 3),
 				SrcMAC: net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
 			},
 			expected: []*Request{
 				{
-					SrcIP:   net.IPv4(192, 168, 0, 3),
+					SrcIP:   ip4(192, 168, 0, 3),
 					SrcMAC:  net.HardwareAddr{0x01, 0x02, 0x03, 0x04, 0x05, 0x06},
-					DstIP:   net.IPv4(192, 168, 0, 1),
+					DstIP:   ip4(192, 168, 0, 1),
 					DstPort: 888,
 				},
 			},
@@ -747,20 +767,20 @@ func TestFileIPGenerator(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    string
-		expected []GeneratorResult[net.IP]
+		expected []GeneratorResult[netip.Addr]
 	}{
 		{
 			name:  "OneIP",
 			input: `{"ip":"192.168.0.1"}`,
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
 			},
 		},
 		{
 			name:  "OneIPWithUnknownField",
 			input: `{"ip":"192.168.0.1","abc":"field"}`,
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
 			},
 		},
 		{
@@ -769,16 +789,16 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192.168.0.1"}`,
 				`{"ip":"192.168.0.2"}`,
 			}, "\n"),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generatedIP(net.IPv4(192, 168, 0, 2)),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generatedIP(ip4(192, 168, 0, 2)),
 			},
 		},
 		{
 			name:  "InvalidJSON",
 			input: `{"ip":"192`,
-			expected: []GeneratorResult[net.IP]{
-				generationError[net.IP](ErrJSON),
+			expected: []GeneratorResult[netip.Addr]{
+				generationError[netip.Addr](ErrJSON),
 			},
 		},
 		{
@@ -787,9 +807,9 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192.168.0.1","port":888}`,
 				`{"ip":"192`,
 			}, "\n"),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generationError[net.IP](ErrJSON),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generationError[netip.Addr](ErrJSON),
 			},
 		},
 		{
@@ -799,16 +819,16 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192`,
 				`{"ip":"192.168.0.3","port":888}`,
 			}, "\n"),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generationError[net.IP](ErrJSON),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generationError[netip.Addr](ErrJSON),
 			},
 		},
 		{
 			name:  "InvalidIP",
 			input: `{"ip":"192.168.0.1111"}`,
-			expected: []GeneratorResult[net.IP]{
-				generationError[net.IP](ErrIP),
+			expected: []GeneratorResult[netip.Addr]{
+				generationError[netip.Addr](ErrIP),
 			},
 		},
 		{
@@ -817,9 +837,9 @@ func TestFileIPGenerator(t *testing.T) {
 				`{"ip":"192.168.0.1"}`,
 				`{}`,
 			}, "\n"),
-			expected: []GeneratorResult[net.IP]{
-				generatedIP(net.IPv4(192, 168, 0, 1)),
-				generationError[net.IP](ErrIP),
+			expected: []GeneratorResult[netip.Addr]{
+				generatedIP(ip4(192, 168, 0, 1)),
+				generationError[netip.Addr](ErrIP),
 			},
 		},
 	}
@@ -930,48 +950,48 @@ func TestFilterIPRequestGenerator(t *testing.T) {
 		{
 			name: "EmptyFilter",
 			input: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
 			},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
 			},
 		},
 		{
 			name: "OneIPFilter",
 			input: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
 			},
 			filtered: []bool{true, false},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
 			},
 		},
 		{
 			name: "OneIPFilterMiddle",
 			input: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
+				newScanRequest(withDstIP(ip4(10, 0, 3, 3))),
 			},
 			filtered: []bool{false, true, false},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 3, 3))),
 			},
 		},
 		{
 			name: "TwoIPFilter",
 			input: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
-				newScanRequest(withDstIP(net.IPv4(10, 0, 3, 3).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 1, 1))),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
+				newScanRequest(withDstIP(ip4(10, 0, 3, 3))),
 			},
 			filtered: []bool{true, false, true},
 			expected: []*Request{
-				newScanRequest(withDstIP(net.IPv4(10, 0, 2, 2).To4())),
+				newScanRequest(withDstIP(ip4(10, 0, 2, 2))),
 			},
 		},
 	}
@@ -990,7 +1010,7 @@ func TestFilterIPRequestGenerator(t *testing.T) {
 			}
 			close(input)
 			r := newScanRange(
-				withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+				withPrefix(netip.PrefixFrom(ip4(10, 0, 0, 0), 8)),
 			)
 			delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
 				Return(input, nil)
@@ -1022,7 +1042,7 @@ func TestFilterIPRequestGeneratorWithGeneratorError(t *testing.T) {
 	delegate := NewMockRequestGenerator(ctrl)
 
 	r := newScanRange(
-		withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+		withPrefix(netip.PrefixFrom(ip4(10, 0, 0, 0), 8)),
 	)
 	delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
 		Return(nil, errors.New("generate error"))
@@ -1041,10 +1061,10 @@ func TestFilterIPRequestGeneratorWithIPContainerError(t *testing.T) {
 	delegate := NewMockRequestGenerator(ctrl)
 
 	r := newScanRange(
-		withSubnet(&net.IPNet{IP: net.IPv4(10, 0, 0, 0), Mask: net.CIDRMask(8, 32)}),
+		withPrefix(netip.PrefixFrom(ip4(10, 0, 0, 0), 8)),
 	)
 	input := make(chan *Request, 1)
-	input <- newScanRequest(withDstIP(net.IPv4(10, 0, 1, 1).To4()))
+	input <- newScanRequest(withDstIP(ip4(10, 0, 1, 1)))
 	close(input)
 	delegate.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), r).
 		Return(input, nil)
@@ -1059,6 +1079,6 @@ func TestFilterIPRequestGeneratorWithIPContainerError(t *testing.T) {
 	result := collectChannel(requests)
 	require.Equal(t, []*Request{
 		newScanRequest(
-			withDstIP(net.IPv4(10, 0, 1, 1).To4()),
+			withDstIP(ip4(10, 0, 1, 1)),
 			withError(errors.New("ip container error")))}, result)
 }

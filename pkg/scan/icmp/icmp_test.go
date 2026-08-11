@@ -3,6 +3,7 @@ package icmp
 import (
 	"context"
 	"net"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -20,8 +21,8 @@ func TestPacketFillerEthernet(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -62,8 +63,8 @@ func TestPacketFillerIPv4(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1), WithVPNmode(true))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -101,8 +102,8 @@ func TestPacketFillerPayload(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -129,8 +130,8 @@ func TestPacketFillerTTL(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -152,8 +153,8 @@ func TestPacketFillerIPTotalLength(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1), WithPayload([]byte("abc")))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -175,8 +176,8 @@ func TestPacketFillerIPProtocol(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})
@@ -197,8 +198,8 @@ func TestPacketFillerIPFlags(t *testing.T) {
 		WithType(layers.ICMPv4TypeTimestampRequest), WithCode(1))
 	packet := gopacket.NewSerializeBuffer()
 	err := filler.Fill(packet, &scan.Request{
-		SrcIP:  net.IPv4(192, 168, 0, 3).To4(),
-		DstIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.3"),
+		DstIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		DstMAC: net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 	})

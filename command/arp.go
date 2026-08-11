@@ -30,16 +30,19 @@ func newARPCmd() *arpCmd {
 			if len(args) != 1 {
 				return errors.New("requires one ip subnet argument")
 			}
-			dstSubnet, err := ip.ParseIPNet(args[0])
+			dstPrefix, dstZone, err := ip.ParsePrefix(args[0])
 			if err != nil {
 				return
+			}
+			if !dstPrefix.Addr().Is4() {
+				return errors.New("ARP supports IPv4 only; use ndp for IPv6")
 			}
 
 			if err = c.opts.parseRawOptions(); err != nil {
 				return
 			}
 			var r *scan.Range
-			if r, err = c.opts.getScanRange(dstSubnet); err != nil {
+			if r, err = c.opts.getScanRange(dstPrefix, dstZone); err != nil {
 				return err
 			}
 			if r.SrcMAC == nil {

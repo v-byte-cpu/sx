@@ -10,8 +10,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 	"github.com/v-byte-cpu/sx/pkg/scan/icmp"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 )
 
 func newICMPCmd() *icmpCmd {
@@ -31,6 +31,15 @@ func newICMPCmd() *icmpCmd {
 
 			if err = c.opts.parseRawOptions(); err != nil {
 				return
+			}
+			ipv6 := c.opts.ipv6
+			if prefix, _, prefixErr := c.opts.parseDstPrefix(args); prefixErr == nil && prefix.IsValid() {
+				ipv6 = prefix.Addr().Is6()
+			}
+			if err = validateIPVersionFlags(cmd, ipv6,
+				[]string{"ttl", "ipproto", "ipflags", "iplen", "type", "code"},
+				[]string{flagHopLimit, flagNextHeader, flagPayloadLength, "icmpv6-type", "icmpv6-code"}); err != nil {
+				return err
 			}
 			if err = c.opts.parseOptions(icmp.ScanType, args); err != nil {
 				return
@@ -71,9 +80,14 @@ type icmpCmdOpts struct {
 	ipProtocol uint8
 	ipTotalLen uint16
 
-	icmpType    uint8
-	icmpCode    uint8
-	icmpPayload []byte
+	icmpType      uint8
+	icmpCode      uint8
+	icmpPayload   []byte
+	hopLimit      uint8
+	nextHeader    uint8
+	payloadLength uint16
+	icmpv6Type    uint8
+	icmpv6Code    uint8
 
 	rawIPFlags     string
 	rawICMPPayload string
@@ -93,6 +107,11 @@ func (o *icmpCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().Uint8VarP(&o.icmpCode, "code", "c", 0, "set ICMP code of generated packet")
 	cmd.Flags().StringVarP(&o.rawICMPPayload, "payload", "p", "",
 		strings.Join([]string{"set byte payload of generated packet", "48 random bytes by default"}, "\n"))
+	cmd.Flags().Uint8Var(&o.hopLimit, flagHopLimit, 64, "set IPv6 Hop Limit field")
+	cmd.Flags().Uint8Var(&o.nextHeader, flagNextHeader, 58, "set IPv6 Next Header field")
+	cmd.Flags().Uint16Var(&o.payloadLength, flagPayloadLength, 0, "set IPv6 Payload Length field (calculated by default)")
+	cmd.Flags().Uint8Var(&o.icmpv6Type, "icmpv6-type", 128, "set ICMPv6 type")
+	cmd.Flags().Uint8Var(&o.icmpv6Code, "icmpv6-code", 0, "set ICMPv6 code")
 }
 
 func (o *icmpCmdOpts) parseRawOptions() (err error) {
@@ -124,12 +143,12 @@ func (o *icmpCmdOpts) newICMPScanMethod(ctx context.Context) *icmp.ScanMethod {
 		reqgen = scan.NewFilterIPRequestGenerator(reqgen, o.excludeIPs)
 	}
 	if o.cache != nil {
-		reqgen = arp.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
+		reqgen = neighbor.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
 	}
 	pktgen := scan.NewPacketMultiGenerator(icmp.NewPacketFiller(o.getICMPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
-	return icmp.NewScanMethod(psrc, results, o.vpnMode)
+	return icmp.NewScanMethodForFamily(psrc, results, o.vpnMode, o.ipv6, o.scanRange.Interface.Name)
 }
 
 func (o *icmpCmdOpts) getICMPOptions() (opts []icmp.PacketFillerOption) {
@@ -140,6 +159,11 @@ func (o *icmpCmdOpts) getICMPOptions() (opts []icmp.PacketFillerOption) {
 		icmp.WithIPTotalLength(o.ipTotalLen),
 		icmp.WithType(o.icmpType),
 		icmp.WithCode(o.icmpCode),
+		icmp.WithHopLimit(o.hopLimit),
+		icmp.WithNextHeader(o.nextHeader),
+		icmp.WithPayloadLength(o.payloadLength),
+		icmp.WithICMPv6Type(o.icmpv6Type),
+		icmp.WithICMPv6Code(o.icmpv6Code),
 		icmp.WithVPNmode(o.vpnMode))
 
 	if len(o.icmpPayload) > 0 {

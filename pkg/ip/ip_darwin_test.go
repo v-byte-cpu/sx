@@ -2,7 +2,7 @@ package ip
 
 import (
 	"errors"
-	"net"
+	"net/netip"
 	"syscall"
 	"testing"
 
@@ -22,11 +22,27 @@ func TestParseDefaultRoute(t *testing.T) {
 		Addrs: addrs,
 	}
 
-	result, ok := parseDefaultRoute(message)
+	result, ok := parseDefaultRoute(message, netip.IPv4Unspecified())
 
 	require.True(t, ok)
 	require.Equal(t, 11, result.interfaceIndex)
-	require.Equal(t, net.IPv4(192, 168, 0, 1).To4(), result.gatewayIP)
+	require.Equal(t, netip.MustParseAddr("192.168.0.1"), result.gatewayIP)
+}
+
+func TestParseDefaultIPv6Route(t *testing.T) {
+	t.Parallel()
+
+	addrs := make([]route.Addr, syscall.RTAX_MAX)
+	addrs[syscall.RTAX_DST] = &route.Inet6Addr{}
+	addrs[syscall.RTAX_GATEWAY] = &route.Inet6Addr{IP: [16]byte{0xfe, 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}}
+	addrs[syscall.RTAX_NETMASK] = &route.Inet6Addr{}
+	message := &route.RouteMessage{Flags: syscall.RTF_GATEWAY, Index: 11, Addrs: addrs}
+
+	result, ok := parseDefaultRoute(message, netip.IPv6Unspecified())
+
+	require.True(t, ok)
+	require.Equal(t, 11, result.interfaceIndex)
+	require.Equal(t, netip.MustParseAddr("fe80::1"), result.gatewayIP)
 }
 
 func TestParseDefaultRouteRejectsNonDefaultRoutes(t *testing.T) {
@@ -105,7 +121,7 @@ func TestParseDefaultRouteRejectsNonDefaultRoutes(t *testing.T) {
 		tt := vtt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			_, ok := parseDefaultRoute(tt.message)
+			_, ok := parseDefaultRoute(tt.message, netip.IPv4Unspecified())
 			require.False(t, ok)
 		})
 	}

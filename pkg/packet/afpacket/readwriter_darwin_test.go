@@ -56,7 +56,7 @@ func TestDarwinNewSourceRejectsUnsupportedLinkType(t *testing.T) {
 	t.Parallel()
 	handle := &fakePacketHandle{linkType: layers.LinkTypePPP}
 
-	_, err := newSource(handle, false)
+	_, err := newSource(handle, false, false)
 
 	require.ErrorIs(t, err, ErrUnsupportedLinkType)
 	require.True(t, handle.closed)
@@ -65,7 +65,7 @@ func TestDarwinNewSourceRejectsUnsupportedLinkType(t *testing.T) {
 func TestDarwinSourceSetBPFFilter(t *testing.T) {
 	t.Parallel()
 	handle := &fakePacketHandle{linkType: layers.LinkTypeEthernet}
-	source, err := newSource(handle, false)
+	source, err := newSource(handle, false, false)
 	require.NoError(t, err)
 
 	err = source.SetBPFFilter("tcp", 1518)
@@ -80,6 +80,7 @@ func TestDarwinSourceReadPacketData(t *testing.T) {
 		name     string
 		linkType layers.LinkType
 		vpnMode  bool
+		ipv6     bool
 		input    []byte
 		expected []byte
 	}{
@@ -102,6 +103,14 @@ func TestDarwinSourceReadPacketData(t *testing.T) {
 			vpnMode:  true,
 			input:    []byte{0x45, 0x00},
 			expected: []byte{0x45, 0x00},
+		},
+		{
+			name:     "IPv6",
+			linkType: layers.LinkTypeIPv6,
+			vpnMode:  true,
+			ipv6:     true,
+			input:    []byte{0x60, 0x00},
+			expected: []byte{0x60, 0x00},
 		},
 		{
 			name:     "Null",
@@ -132,7 +141,7 @@ func TestDarwinSourceReadPacketData(t *testing.T) {
 					},
 				}},
 			}
-			source, err := newSource(handle, tt.vpnMode)
+			source, err := newSource(handle, tt.vpnMode, tt.ipv6)
 			require.NoError(t, err)
 
 			data, ci, err := source.ReadPacketData()
@@ -153,7 +162,7 @@ func TestDarwinSourceReadShortLoopbackPacketReturnsError(t *testing.T) {
 			data: []byte{0x02, 0x00, 0x00},
 		}},
 	}
-	source, err := newSource(handle, true)
+	source, err := newSource(handle, true, false)
 	require.NoError(t, err)
 
 	_, _, err = source.ReadPacketData()
@@ -167,6 +176,7 @@ func TestDarwinSourceWritePacketData(t *testing.T) {
 		name     string
 		linkType layers.LinkType
 		vpnMode  bool
+		ipv6     bool
 		expected []byte
 	}{
 		{
@@ -192,13 +202,20 @@ func TestDarwinSourceWritePacketData(t *testing.T) {
 			vpnMode:  true,
 			expected: []byte{0x00, 0x00, 0x00, 0x02, 0x45, 0x00},
 		},
+		{
+			name:     "NullIPv6",
+			linkType: layers.LinkTypeNull,
+			vpnMode:  true,
+			ipv6:     true,
+			expected: []byte{0x1e, 0x00, 0x00, 0x00, 0x45, 0x00},
+		},
 	}
 	for _, vtt := range tests {
 		tt := vtt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			handle := &fakePacketHandle{linkType: tt.linkType}
-			source, err := newSource(handle, tt.vpnMode)
+			source, err := newSource(handle, tt.vpnMode, tt.ipv6)
 			require.NoError(t, err)
 
 			err = source.WritePacketData([]byte{0x45, 0x00})

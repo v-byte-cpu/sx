@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/v-byte-cpu/sx/pkg/scan"
@@ -27,11 +29,15 @@ type ScanResult struct {
 }
 
 func (r *ScanResult) String() string {
-	return fmt.Sprintf("%-20s %-5d", r.IP, r.Port)
+	width := 20
+	if strings.ContainsRune(r.IP, ':') {
+		width = 40
+	}
+	return fmt.Sprintf("%-*s %-5d", width, r.IP, r.Port)
 }
 
 func (r *ScanResult) ID() string {
-	return fmt.Sprintf("%s:%d", r.IP, r.Port)
+	return net.JoinHostPort(r.IP, strconv.Itoa(int(r.Port)))
 }
 
 func (r *ScanResult) MarshalJSON() ([]byte, error) {
@@ -78,7 +84,7 @@ func NewScanner(opts ...ScannerOption) *Scanner {
 
 func (s *Scanner) Scan(ctx context.Context, r *scan.Request) (result scan.Result, err error) {
 	var conn net.Conn
-	if conn, err = s.dialer.DialContext(ctx, "tcp", fmt.Sprintf("%s:%d", r.DstIP, r.DstPort)); err != nil {
+	if conn, err = s.dialer.DialContext(ctx, "tcp", destination(r)); err != nil {
 		return
 	}
 	defer conn.Close()
@@ -124,6 +130,14 @@ func (s *Scanner) Scan(ctx context.Context, r *scan.Request) (result scan.Result
 		}
 	}
 	return
+}
+
+func destination(r *scan.Request) string {
+	return (&net.TCPAddr{
+		IP:   net.IP(r.DstIP.WithZone("").AsSlice()),
+		Port: int(r.DstPort),
+		Zone: r.DstIP.Zone(),
+	}).String()
 }
 
 type socksConn struct {

@@ -3,7 +3,6 @@ package scan
 import (
 	"context"
 	"errors"
-	"net"
 	"runtime"
 	"testing"
 	"time"
@@ -46,14 +45,14 @@ func TestGeneratorPacketsWithOnePair(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 1)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port})
 
 	g := NewPacketGenerator(f)
 
@@ -71,14 +70,14 @@ func TestMultiGeneratorPacketsWithOnePair(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 1)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port})
 
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
@@ -96,18 +95,18 @@ func TestGeneratorPacketsWithTwoPairs(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 2)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port + 1}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port + 1}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port})
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port + 1})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port + 1})
 	g := NewPacketGenerator(f)
 
 	out := g.Packets(context.Background(), in)
@@ -127,18 +126,18 @@ func TestMultiGeneratorPacketsWithTwoPairs(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 2)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port + 1}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port + 1}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port})
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port + 1})
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port + 1})
 
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())
 
@@ -179,14 +178,14 @@ func TestGeneratorPacketsReturnsFillError(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 1)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}).
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}).
 		Return(errors.New("failed request"))
 	g := NewPacketGenerator(f)
 
@@ -224,14 +223,14 @@ func TestMultiGeneratorPacketsReturnsFillError(t *testing.T) {
 	port := uint16(888)
 
 	in := make(chan *Request, 1)
-	in <- &Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}
+	in <- &Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}
 	close(in)
 
 	ctrl := gomock.NewController(t)
 	f := NewMockPacketFiller(ctrl)
 	f.EXPECT().
 		Fill(gomock.Not(gomock.Nil()),
-			&Request{DstIP: net.IPv4(192, 168, 0, 1).To4(), DstPort: port}).
+			&Request{DstIP: ip4(192, 168, 0, 1), DstPort: port}).
 		Return(errors.New("failed request"))
 
 	g := NewPacketMultiGenerator(f, runtime.NumCPU())

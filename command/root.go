@@ -38,6 +38,7 @@ func newRootCmd(version string) *cobra.Command {
 
 	cmd.AddCommand(
 		newARPCmd().cmd,
+		newNDPCmd().cmd,
 		newICMPCmd().cmd,
 		newUDPCmd().cmd,
 		tcpCmd,
@@ -161,7 +162,7 @@ func startPacketScanEngine(ctx context.Context, conf *packetScanConfig) error {
 	r := &conf.scanRange
 
 	// setup network interface to read/write packets
-	ps, err := afpacket.NewPacketSource(r.Interface.Name, conf.vpnMode)
+	ps, err := afpacket.NewPacketSource(r.Interface.Name, conf.vpnMode, r.SrcIP.Is6())
 	if err != nil {
 		return err
 	}

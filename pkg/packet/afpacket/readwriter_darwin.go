@@ -41,12 +41,13 @@ const (
 type Source struct {
 	handle packetHandle
 	mode   packetLinkMode
+	ipv6   bool
 }
 
 // Assert that Source conforms to the packet.ReadWriter interface.
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
+func NewPacketSource(iface string, vpnMode bool, ipv6 bool) (*Source, error) {
 	handle, err := pcap.OpenLive(iface, defaultSnapLen, false, pcap.BlockForever)
 	if err != nil {
 		return nil, err
@@ -55,19 +56,19 @@ func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
 		handle.Close()
 		return nil, err
 	}
-	return newSource(handle, vpnMode)
+	return newSource(handle, vpnMode, ipv6)
 }
 
-func newSource(handle packetHandle, vpnMode bool) (*Source, error) {
-	mode, err := newPacketLinkMode(handle.LinkType(), vpnMode)
+func newSource(handle packetHandle, vpnMode bool, ipv6 bool) (*Source, error) {
+	mode, err := newPacketLinkMode(handle.LinkType(), vpnMode, ipv6)
 	if err != nil {
 		handle.Close()
 		return nil, err
 	}
-	return &Source{handle: handle, mode: mode}, nil
+	return &Source{handle: handle, mode: mode, ipv6: ipv6}, nil
 }
 
-func newPacketLinkMode(linkType layers.LinkType, vpnMode bool) (packetLinkMode, error) {
+func newPacketLinkMode(linkType layers.LinkType, vpnMode bool, ipv6 bool) (packetLinkMode, error) {
 	if !vpnMode {
 		if linkType == layers.LinkTypeEthernet {
 			return packetLinkEthernet, nil
@@ -76,8 +77,16 @@ func newPacketLinkMode(linkType layers.LinkType, vpnMode bool) (packetLinkMode, 
 	}
 
 	switch linkType {
-	case layers.LinkTypeRaw, layers.LinkTypeIPv4:
+	case layers.LinkTypeRaw:
 		return packetLinkRaw, nil
+	case layers.LinkTypeIPv4:
+		if !ipv6 {
+			return packetLinkRaw, nil
+		}
+	case layers.LinkTypeIPv6:
+		if ipv6 {
+			return packetLinkRaw, nil
+		}
 	case layers.LinkTypeNull:
 		return packetLinkNull, nil
 	case layers.LinkTypeLoop:
@@ -85,6 +94,7 @@ func newPacketLinkMode(linkType layers.LinkType, vpnMode bool) (packetLinkMode, 
 	default:
 		return 0, fmt.Errorf("%w: %s", ErrUnsupportedLinkType, linkType)
 	}
+	return 0, fmt.Errorf("%w: %s", ErrUnsupportedLinkType, linkType)
 }
 
 func (s *Source) SetBPFFilter(bpfFilter string, _ int) error {
@@ -128,17 +138,21 @@ func (s *Source) WritePacketData(pkt []byte) error {
 func (s *Source) encodePacket(pkt []byte) []byte {
 	switch s.mode {
 	case packetLinkNull:
-		return appendLoopbackHeader(pkt, binary.LittleEndian)
+		return appendLoopbackHeaderForFamily(pkt, binary.LittleEndian, s.ipv6)
 	case packetLinkLoop:
-		return appendLoopbackHeader(pkt, binary.BigEndian)
+		return appendLoopbackHeaderForFamily(pkt, binary.BigEndian, s.ipv6)
 	default:
 		return pkt
 	}
 }
 
-func appendLoopbackHeader(pkt []byte, byteOrder binary.ByteOrder) []byte {
+func appendLoopbackHeaderForFamily(pkt []byte, byteOrder binary.ByteOrder, ipv6 bool) []byte {
 	result := make([]byte, loopbackLen+len(pkt))
-	byteOrder.PutUint32(result[:loopbackLen], uint32(layers.ProtocolFamilyIPv4))
+	family := layers.ProtocolFamilyIPv4
+	if ipv6 {
+		family = layers.ProtocolFamilyIPv6Darwin
+	}
+	byteOrder.PutUint32(result[:loopbackLen], uint32(family))
 	copy(result[loopbackLen:], pkt)
 	return result
 }

@@ -49,6 +49,12 @@ func easyjsonD3b49167DecodeGithubComVByteCpuSxPkgScanIcmp(in *jlexer.Lexer, out 
 			} else {
 				out.TTL = uint8(in.Uint8())
 			}
+		case "hop_limit":
+			if in.IsNull() {
+				in.Skip()
+			} else {
+				out.HopLimit = uint8(in.Uint8())
+			}
 		case "icmp":
 			if in.IsNull() {
 				in.Skip()
@@ -83,10 +89,15 @@ func easyjsonD3b49167EncodeGithubComVByteCpuSxPkgScanIcmp(out *jwriter.Writer, i
 		out.RawString(prefix)
 		out.String(string(in.IP))
 	}
-	{
+	if in.TTL != 0 {
 		const prefix string = ",\"ttl\":"
 		out.RawString(prefix)
 		out.Uint8(uint8(in.TTL))
+	}
+	if in.HopLimit != 0 {
+		const prefix string = ",\"hop_limit\":"
+		out.RawString(prefix)
+		out.Uint8(uint8(in.HopLimit))
 	}
 	{
 		const prefix string = ",\"icmp\":"
