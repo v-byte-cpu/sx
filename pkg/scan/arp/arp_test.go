@@ -10,6 +10,7 @@ import (
 	"github.com/google/gopacket/layers"
 	"github.com/stretchr/testify/assert"
 	"github.com/v-byte-cpu/sx/pkg/scan"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 )
 
 func TestProcessPacketData(t *testing.T) {
@@ -60,7 +61,7 @@ func TestProcessPacketData(t *testing.T) {
 			assert.Fail(t, "results chan is empty")
 			return
 		}
-		arpResult := result.(*ScanResult)
+		arpResult := result.(*neighbor.ScanResult)
 		assert.Equal(t, net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6}.String(), arpResult.MAC)
 		assert.Equal(t, net.IPv4(192, 168, 0, 3).To4().String(), arpResult.IP)
 

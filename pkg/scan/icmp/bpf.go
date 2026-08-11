@@ -12,11 +12,19 @@ const MaxPacketLength = 1518
 
 func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
 	var sb strings.Builder
+	if r.SrcIP.Is6() || (r.DstPrefix.IsValid() && r.DstPrefix.Addr().Is6()) {
+		sb.WriteString("icmp6 and icmp6[0]!=128")
+		if r.DstPrefix.IsValid() {
+			sb.WriteString(" and ip6 src net ")
+			sb.WriteString(r.DstPrefix.String())
+		}
+		return sb.String(), MaxPacketLength
+	}
 	// filter ECHO requests
 	sb.WriteString("icmp and icmp[0]!=8")
-	if r.DstSubnet != nil {
+	if r.DstPrefix.IsValid() {
 		sb.WriteString(" and ip src net ")
-		sb.WriteString(r.DstSubnet.String())
+		sb.WriteString(r.DstPrefix.String())
 	}
 	return sb.String(), MaxPacketLength
 }

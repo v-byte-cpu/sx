@@ -11,7 +11,7 @@ package scan
 
 import (
 	context "context"
-	net "net"
+	netip "net/netip"
 	reflect "reflect"
 
 	gomock "go.uber.org/mock/gomock"
@@ -81,10 +81,10 @@ func (m *MockIPGenerator) EXPECT() *MockIPGeneratorMockRecorder {
 }
 
 // IPs mocks base method.
-func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[net.IP], error) {
+func (m *MockIPGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[netip.Addr], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "IPs", ctx, r)
-	ret0, _ := ret[0].(<-chan GeneratorResult[net.IP])
+	ret0, _ := ret[0].(<-chan GeneratorResult[netip.Addr])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -159,7 +159,7 @@ func (m *MockIPContainer) EXPECT() *MockIPContainerMockRecorder {
 }
 
 // Contains mocks base method.
-func (m *MockIPContainer) Contains(ip net.IP) (bool, error) {
+func (m *MockIPContainer) Contains(ip netip.Addr) (bool, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Contains", ip)
 	ret0, _ := ret[0].(bool)

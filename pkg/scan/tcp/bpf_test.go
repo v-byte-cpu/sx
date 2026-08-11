@@ -1,7 +1,7 @@
 package tcp
 
 import (
-	"net"
+	"net/netip"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -22,13 +22,8 @@ func TestBPFFilter(t *testing.T) {
 			scanRange:      &scan.Range{},
 		},
 		{
-			name: "OneSubnet",
-			scanRange: &scan.Range{
-				DstSubnet: &net.IPNet{
-					IP:   net.IPv4(192, 168, 0, 0),
-					Mask: net.CIDRMask(24, 32),
-				},
-			},
+			name:           "OneSubnet",
+			scanRange:      &scan.Range{DstPrefix: netip.MustParsePrefix("192.168.0.0/24")},
 			expectedFilter: "tcp and ip src net 192.168.0.0/24",
 		},
 		{
@@ -98,13 +93,8 @@ func TestSYNACKBPFFilter(t *testing.T) {
 			scanRange:      &scan.Range{},
 		},
 		{
-			name: "OneSubnet",
-			scanRange: &scan.Range{
-				DstSubnet: &net.IPNet{
-					IP:   net.IPv4(192, 168, 0, 0),
-					Mask: net.CIDRMask(24, 32),
-				},
-			},
+			name:           "OneSubnet",
+			scanRange:      &scan.Range{DstPrefix: netip.MustParsePrefix("192.168.0.0/24")},
 			expectedFilter: "tcp and ip src net 192.168.0.0/24 and tcp[13] == 18",
 		},
 		{

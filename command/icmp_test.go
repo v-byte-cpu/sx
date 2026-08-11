@@ -37,6 +37,18 @@ func TestICMPCmdDstSubnetError(t *testing.T) {
 	}
 }
 
+func TestICMPCmdRejectsFamilySpecificFlags(t *testing.T) {
+	t.Parallel()
+
+	ipv6 := newICMPCmd().cmd
+	require.NoError(t, ipv6.ParseFlags([]string{"--ttl", "37"}))
+	require.EqualError(t, ipv6.RunE(ipv6, []string{"2001:db8::1"}), "--ttl is not supported with IPv6")
+
+	ipv4 := newICMPCmd().cmd
+	require.NoError(t, ipv4.ParseFlags([]string{"--hop-limit", "37"}))
+	require.EqualError(t, ipv4.RunE(ipv4, []string{"192.0.2.1"}), "--hop-limit is not supported with IPv4")
+}
+
 func TestICMPCmdOptsInitCliFlags(t *testing.T) {
 	t.Parallel()
 	var opts icmpCmdOpts
@@ -53,14 +65,14 @@ func TestICMPCmdOptsInitCliFlags(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, opts.json)
 	require.Equal(t, "eth0", opts.rawInterface)
-	require.Equal(t, net.IPv4(192, 168, 0, 1), opts.srcIP)
+	require.Equal(t, "192.168.0.1", opts.rawSrcIP)
 	require.Equal(t, "00:11:22:33:44:55", opts.rawSrcMAC)
 	require.Equal(t, "500/7s", opts.rawRateLimit)
 	require.Equal(t, 10*time.Second, opts.exitDelay)
 
 	require.Equal(t, "11:22:33:44:55:66", opts.rawGatewayMAC)
 	require.Equal(t, "ip_file.jsonl", opts.ipFile)
-	require.Equal(t, "arp.cache", opts.arpCacheFile)
+	require.Equal(t, "arp.cache", opts.neighborCacheFile)
 
 	require.Equal(t, uint8(128), opts.ipTTL)
 	require.Equal(t, uint8(6), opts.ipProtocol)

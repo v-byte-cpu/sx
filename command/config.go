@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 	"github.com/v-byte-cpu/sx/command/log"
 	"github.com/v-byte-cpu/sx/pkg/ip"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 	"github.com/yl2chen/cidranger"
 	"go.uber.org/ratelimit"
 )
@@ -24,23 +25,26 @@ import (
 const (
 	defaultWorkerCount = 100
 	defaultExitDelay   = 300 * time.Millisecond
+	flagHopLimit       = "hop-limit"
+	flagNextHeader     = "next-header"
+	flagPayloadLength  = "payload-length"
 )
 
 var (
-	errSrcIP         = errors.New("invalid source IP")
-	errSrcMAC        = errors.New("invalid source MAC")
-	errSrcInterface  = errors.New("invalid source interface")
-	errRateLimit     = errors.New("invalid ratelimit")
-	errARPCacheStdin = errors.New("ARP cache is expected from file or stdin pipe")
-	errIPFlags       = errors.New("invalid ip flags")
-	errNoDstIP       = errors.New("requires one ip subnet argument or file with ip/port pairs")
-	errARPStdin      = errors.New("ARP cache and IP file can not be read from stdin at the same time")
+	errSrcIP              = errors.New("invalid source IP")
+	errSrcMAC             = errors.New("invalid source MAC")
+	errSrcInterface       = errors.New("invalid source interface")
+	errRateLimit          = errors.New("invalid ratelimit")
+	errNeighborCacheStdin = errors.New("neighbor cache is expected from file or stdin pipe")
+	errIPFlags            = errors.New("invalid ip flags")
+	errNoDstIP            = errors.New("requires one ip subnet argument or file with ip/port pairs")
+	errNeighborStdin      = errors.New("neighbor cache and IP file can not be read from stdin at the same time")
 )
 
 type packetScanCmdOpts struct {
 	json       bool
 	iface      *net.Interface
-	srcIP      net.IP
+	srcIP      netip.Addr
 	srcMAC     net.HardwareAddr
 	rateCount  int
 	rateWindow time.Duration
@@ -48,6 +52,7 @@ type packetScanCmdOpts struct {
 	excludeIPs scan.IPContainer
 
 	rawInterface   string
+	rawSrcIP       string
 	rawSrcMAC      string
 	rawRateLimit   string
 	rawExcludeFile string
@@ -56,7 +61,7 @@ type packetScanCmdOpts struct {
 func (o *packetScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	cmd.Flags().BoolVar(&o.json, "json", false, "enable JSON output")
 	cmd.Flags().StringVarP(&o.rawInterface, "iface", "i", "", "set interface to send/receive packets")
-	cmd.Flags().IPVar(&o.srcIP, "srcip", nil, "set source IP address for generated packets")
+	cmd.Flags().StringVar(&o.rawSrcIP, "srcip", "", "set source IP address for generated packets")
 	cmd.Flags().StringVar(&o.rawSrcMAC, "srcmac", "", "set source MAC address for generated packets")
 	cmd.Flags().StringVar(&o.rawExcludeFile, "exclude", "",
 		strings.Join([]string{
@@ -80,6 +85,12 @@ func (o *packetScanCmdOpts) parseRawOptions() (err error) {
 			return
 		}
 	}
+	if len(o.rawSrcIP) > 0 {
+		if o.srcIP, err = netip.ParseAddr(o.rawSrcIP); err != nil {
+			return errSrcIP
+		}
+		o.srcIP = o.srcIP.Unmap()
+	}
 	if len(o.rawSrcMAC) > 0 {
 		if o.srcMAC, err = net.ParseMAC(o.rawSrcMAC); err != nil {
 			return
@@ -100,8 +111,12 @@ func (o *packetScanCmdOpts) parseRawOptions() (err error) {
 	return
 }
 
-func (o *packetScanCmdOpts) getScanRange(dstSubnet *net.IPNet) (*scan.Range, error) {
-	iface, srcIP, err := o.getInterface(dstSubnet)
+func (o *packetScanCmdOpts) getScanRange(dstPrefix netip.Prefix, dstZone string) (*scan.Range, error) {
+	return o.getScanRangeForFamily(dstPrefix, dstZone, dstPrefix.IsValid() && dstPrefix.Addr().Is6())
+}
+
+func (o *packetScanCmdOpts) getScanRangeForFamily(dstPrefix netip.Prefix, dstZone string, ipv6 bool) (*scan.Range, error) {
+	iface, srcAddr, err := o.getInterface(dstPrefix, dstZone, ipv6)
 	if err != nil {
 		return nil, err
 	}
@@ -109,10 +124,13 @@ func (o *packetScanCmdOpts) getScanRange(dstSubnet *net.IPNet) (*scan.Range, err
 		return nil, errSrcInterface
 	}
 
-	if o.srcIP != nil {
-		srcIP = o.srcIP
+	if o.srcIP.IsValid() {
+		srcAddr = o.srcIP
 	}
-	if srcIP == nil {
+	if !srcAddr.IsValid() {
+		return nil, errSrcIP
+	}
+	if dstPrefix.IsValid() && srcAddr.Is4() != dstPrefix.Addr().Is4() {
 		return nil, errSrcIP
 	}
 
@@ -123,36 +141,82 @@ func (o *packetScanCmdOpts) getScanRange(dstSubnet *net.IPNet) (*scan.Range, err
 
 	return &scan.Range{
 		Interface: iface,
-		DstSubnet: dstSubnet,
-		SrcIP:     srcIP.To4(),
+		DstPrefix: dstPrefix,
+		DstZone:   dstZone,
+		SrcIP:     srcAddr,
 		SrcMAC:    srcMAC}, nil
 }
 
-func (o *packetScanCmdOpts) getInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {
-	if dstSubnet != nil {
+func (o *packetScanCmdOpts) getInterface(dstPrefix netip.Prefix, dstZone string, ipv6 bool) (iface *net.Interface, ifaceIP netip.Addr, err error) {
+	if scopedIface, scoped, scopedErr := o.getScopedSourceInterface(dstZone); scoped || scopedErr != nil {
+		return scopedIface, o.srcIP, scopedErr
+	}
+	if dstPrefix.IsValid() {
 		// try to find directly connected interface
-		if iface, ifaceIP, err = o.getLocalSubnetInterface(dstSubnet); err != nil {
+		if iface, ifaceIP, err = o.getLocalPrefixInterface(dstPrefix, dstZone); err != nil {
 			return
 		}
 		// found local interface
-		if iface != nil && ifaceIP != nil {
+		if iface != nil && ifaceIP.IsValid() {
 			return
+		}
+	}
+	target := netip.IPv4Unspecified()
+	if ipv6 {
+		target = netip.IPv6Unspecified()
+	}
+	if dstPrefix.IsValid() {
+		target = dstPrefix.Addr()
+		if dstZone != "" {
+			target = target.WithZone(dstZone)
 		}
 	}
 	if o.iface != nil {
 		// try to get first ip address
-		ifaceIP, err = ip.GetInterfaceIP(o.iface)
+		ifaceIP, err = ip.GetInterfaceIP(o.iface, target)
 		return o.iface, ifaceIP, err
 	}
 	// fallback to interface of default gateway
-	return ip.GetDefaultInterface()
+	return ip.GetDefaultInterface(target)
 }
 
-func (o *packetScanCmdOpts) getLocalSubnetInterface(dstSubnet *net.IPNet) (iface *net.Interface, ifaceIP net.IP, err error) {
-	if o.iface == nil {
-		return ip.GetLocalSubnetInterface(dstSubnet)
+func (o *packetScanCmdOpts) getScopedSourceInterface(dstZone string) (*net.Interface, bool, error) {
+	sourceZone := o.srcIP.Zone()
+	if sourceZone == "" {
+		return nil, false, nil
 	}
-	ifaceIP, err = ip.GetLocalSubnetInterfaceIP(o.iface, dstSubnet)
+	if dstZone != "" && dstZone != sourceZone {
+		return nil, true, errSrcInterface
+	}
+	if o.iface != nil {
+		if o.iface.Name != sourceZone {
+			return nil, true, errSrcInterface
+		}
+		return o.iface, true, nil
+	}
+	iface, err := net.InterfaceByName(sourceZone)
+	if err != nil {
+		return nil, true, err
+	}
+	o.iface = iface
+	return iface, true, nil
+}
+
+func (o *packetScanCmdOpts) getLocalPrefixInterface(dstPrefix netip.Prefix, dstZone string) (iface *net.Interface, ifaceIP netip.Addr, err error) {
+	if dstZone != "" {
+		if o.iface != nil && o.iface.Name != dstZone {
+			return nil, netip.Addr{}, errSrcInterface
+		}
+		if o.iface == nil {
+			if o.iface, err = net.InterfaceByName(dstZone); err != nil {
+				return nil, netip.Addr{}, err
+			}
+		}
+	}
+	if o.iface == nil {
+		return ip.GetLocalPrefixInterface(dstPrefix)
+	}
+	ifaceIP, err = ip.GetLocalPrefixInterfaceIP(o.iface, dstPrefix)
 	return o.iface, ifaceIP, err
 }
 
@@ -165,16 +229,33 @@ func (o *packetScanCmdOpts) getLogger(name string, w io.Writer) (logger log.Logg
 	return
 }
 
+func validateIPVersionFlags(cmd *cobra.Command, ipv6 bool, ipv4Flags, ipv6Flags []string) error {
+	unsupported := ipv6Flags
+	family := "IPv4"
+	if ipv6 {
+		unsupported = ipv4Flags
+		family = "IPv6"
+	}
+	for _, name := range unsupported {
+		if cmd.Flags().Changed(name) {
+			return errors.New("--" + name + " is not supported with " + family)
+		}
+	}
+	return nil
+}
+
 type ipScanCmdOpts struct {
 	packetScanCmdOpts
-	ipFile       string
-	arpCacheFile string
-	gatewayMAC   net.HardwareAddr
-	vpnMode      bool
+	ipFile            string
+	neighborCacheFile string
+	arpCacheFile      string
+	gatewayMAC        net.HardwareAddr
+	vpnMode           bool
+	ipv6              bool
 
 	logger    log.Logger
 	scanRange *scan.Range
-	cache     *arp.Cache
+	cache     *neighbor.Cache
 
 	rawGatewayMAC string
 }
@@ -183,8 +264,11 @@ func (o *ipScanCmdOpts) initCliFlags(cmd *cobra.Command) {
 	o.packetScanCmdOpts.initCliFlags(cmd)
 	cmd.Flags().StringVar(&o.rawGatewayMAC, "gwmac", "", "set gateway MAC address to send generated packets to")
 	cmd.Flags().StringVarP(&o.ipFile, "file", "f", "", "set JSONL file with IPs to scan")
-	cmd.Flags().StringVarP(&o.arpCacheFile, "arp-cache", "a", "",
-		strings.Join([]string{"set ARP cache file", "reads from stdin by default"}, "\n"))
+	cmd.Flags().BoolVar(&o.ipv6, "ipv6", false, "use IPv6 for file-only scans")
+	cmd.Flags().StringVarP(&o.neighborCacheFile, "neighbor-cache", "a", "",
+		strings.Join([]string{"set neighbor cache file", "reads from stdin by default"}, "\n"))
+	cmd.Flags().StringVar(&o.arpCacheFile, "arp-cache", "", "deprecated alias for --neighbor-cache")
+	_ = cmd.Flags().MarkDeprecated("arp-cache", "use --neighbor-cache instead")
 }
 
 func (o *ipScanCmdOpts) parseRawOptions() (err error) {
@@ -196,18 +280,26 @@ func (o *ipScanCmdOpts) parseRawOptions() (err error) {
 			return
 		}
 	}
+	if o.neighborCacheFile != "" && o.arpCacheFile != "" {
+		return errors.New("neighbor-cache and arp-cache can not be used together")
+	}
 	return
 }
 
 func (o *ipScanCmdOpts) parseOptions(scanName string, args []string) (err error) {
 
-	dstSubnet, err := o.parseDstSubnet(args)
+	dstPrefix, dstZone, err := o.parseDstPrefix(args)
 	if err != nil {
 		return
 	}
-	if o.scanRange, err = o.getScanRange(dstSubnet); err != nil {
+	ipv6 := o.ipv6
+	if dstPrefix.IsValid() {
+		ipv6 = dstPrefix.Addr().Is6()
+	}
+	if o.scanRange, err = o.getScanRangeForFamily(dstPrefix, dstZone, ipv6); err != nil {
 		return
 	}
+	o.ipv6 = o.scanRange.SrcIP.Is6()
 	if o.scanRange.SrcMAC == nil {
 		o.vpnMode = true
 	}
@@ -216,15 +308,15 @@ func (o *ipScanCmdOpts) parseOptions(scanName string, args []string) (err error)
 		return
 	}
 
-	// disable arp cache parsing for vpn mode
+	// VPN interfaces exchange raw IP packets and do not need neighbor MACs.
 	if o.vpnMode {
 		return
 	}
-	if err = o.validateARPStdin(); err != nil {
+	if err = o.validateNeighborStdin(); err != nil {
 		return
 	}
 
-	if o.cache, err = o.parseARPCache(); err != nil {
+	if o.cache, err = o.parseNeighborCache(); err != nil {
 		return
 	}
 
@@ -234,37 +326,48 @@ func (o *ipScanCmdOpts) parseOptions(scanName string, args []string) (err error)
 	return
 }
 
-func (o *ipScanCmdOpts) validateARPStdin() (err error) {
-	if o.isARPCacheFromStdin() && o.ipFile == "-" {
-		return errARPStdin
+func (o *ipScanCmdOpts) validateNeighborStdin() (err error) {
+	if o.isNeighborCacheFromStdin() && o.ipFile == "-" {
+		return errNeighborStdin
 	}
 	return
 }
 
-func (o *ipScanCmdOpts) parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
+func (o *ipScanCmdOpts) parseDstPrefix(args []string) (netip.Prefix, string, error) {
 	if len(args) == 0 && len(o.ipFile) == 0 {
-		return nil, errNoDstIP
+		return netip.Prefix{}, "", errNoDstIP
 	}
 	if len(args) == 0 {
-		return
+		return netip.Prefix{}, "", nil
 	}
-	return ip.ParseIPNet(args[0])
+	return ip.ParsePrefix(args[0])
 }
 
-func (o *ipScanCmdOpts) parseARPCache() (cache *arp.Cache, err error) {
+func (o *ipScanCmdOpts) parseDstSubnet(args []string) (*net.IPNet, error) {
+	prefix, _, err := o.parseDstPrefix(args)
+	if err != nil || !prefix.IsValid() {
+		return nil, err
+	}
+	return &net.IPNet{
+		IP:   net.IP(prefix.Addr().AsSlice()),
+		Mask: net.CIDRMask(prefix.Bits(), prefix.Addr().BitLen()),
+	}, nil
+}
+
+func (o *ipScanCmdOpts) parseNeighborCache() (cache *neighbor.Cache, err error) {
 	var r io.ReadCloser
-	if r, err = o.openARPCache(); err != nil {
+	if r, err = o.openNeighborCache(); err != nil {
 		return
 	}
 	defer r.Close()
-	cache = arp.NewCache()
-	err = arp.FillCache(cache, r)
+	cache = neighbor.NewCache()
+	err = neighbor.FillCache(cache, r)
 	return
 }
 
-func (o *ipScanCmdOpts) openARPCache() (r io.ReadCloser, err error) {
-	if !o.isARPCacheFromStdin() {
-		return os.Open(o.arpCacheFile)
+func (o *ipScanCmdOpts) openNeighborCache() (r io.ReadCloser, err error) {
+	if !o.isNeighborCacheFromStdin() {
+		return os.Open(o.cacheFile())
 	}
 	// read from stdin
 	var info os.FileInfo
@@ -274,25 +377,36 @@ func (o *ipScanCmdOpts) openARPCache() (r io.ReadCloser, err error) {
 	// only data being piped to stdin is valid
 	if (info.Mode() & os.ModeCharDevice) != 0 {
 		// stdin from terminal is not valid
-		return nil, errARPCacheStdin
+		return nil, errNeighborCacheStdin
 	}
 	r = io.NopCloser(os.Stdin)
 	return
 }
 
-func (o *ipScanCmdOpts) isARPCacheFromStdin() bool {
-	return len(o.arpCacheFile) == 0 || o.arpCacheFile == "-"
+func (o *ipScanCmdOpts) isNeighborCacheFromStdin() bool {
+	cacheFile := o.cacheFile()
+	return len(cacheFile) == 0 || cacheFile == "-"
 }
 
-func (o *ipScanCmdOpts) getGatewayMAC(iface *net.Interface, cache *arp.Cache) (mac net.HardwareAddr, err error) {
+func (o *ipScanCmdOpts) cacheFile() string {
+	if o.neighborCacheFile != "" {
+		return o.neighborCacheFile
+	}
+	return o.arpCacheFile
+}
+
+func (o *ipScanCmdOpts) getGatewayMAC(iface *net.Interface, cache *neighbor.Cache) (mac net.HardwareAddr, err error) {
 	if o.gatewayMAC != nil {
 		return o.gatewayMAC, nil
 	}
-	var gatewayIP net.IP
-	if gatewayIP, err = ip.GetDefaultGatewayIP(iface); err != nil {
+	var gatewayIP netip.Addr
+	if gatewayIP, err = ip.GetDefaultGatewayIP(iface, o.scanRange.SrcIP); err != nil {
 		return
 	}
-	mac = cache.Get(gatewayIP.To4())
+	if gatewayIP.IsLinkLocalUnicast() {
+		gatewayIP = gatewayIP.WithZone(iface.Name)
+	}
+	mac = cache.Get(gatewayIP)
 	return
 }
 
@@ -435,22 +549,23 @@ func (o *genericScanCmdOpts) parseRawOptions() (err error) {
 }
 
 func (o *genericScanCmdOpts) parseScanRange(args []string) (r *scan.Range, err error) {
-	dstSubnet, err := o.parseDstSubnet(args)
+	dstPrefix, dstZone, err := o.parseDstPrefix(args)
 	r = &scan.Range{
-		DstSubnet: dstSubnet,
+		DstPrefix: dstPrefix,
+		DstZone:   dstZone,
 		Ports:     o.portRanges,
 	}
 	return
 }
 
-func (o *genericScanCmdOpts) parseDstSubnet(args []string) (ipnet *net.IPNet, err error) {
+func (o *genericScanCmdOpts) parseDstPrefix(args []string) (netip.Prefix, string, error) {
 	if len(args) == 0 && len(o.ipFile) == 0 {
-		return nil, errNoDstIP
+		return netip.Prefix{}, "", errNoDstIP
 	}
 	if len(args) == 0 {
-		return
+		return netip.Prefix{}, "", nil
 	}
-	return ip.ParseIPNet(args[0])
+	return ip.ParsePrefix(args[0])
 }
 
 func (o *genericScanCmdOpts) getLogger(name string, w io.Writer) (logger log.Logger, err error) {
@@ -576,6 +691,14 @@ func parseIPFlags(inputFlags string) (result uint8, err error) {
 
 type openFileFunc func() (io.ReadCloser, error)
 
+type ipContainer struct {
+	ranger cidranger.Ranger
+}
+
+func (c *ipContainer) Contains(addr netip.Addr) (bool, error) {
+	return c.ranger.Contains(net.IP(addr.WithZone("").AsSlice()))
+}
+
 func parseExcludeFile(openFile openFileFunc) (excludeIPs scan.IPContainer, err error) {
 	input, err := openFile()
 	if err != nil {
@@ -594,15 +717,20 @@ func parseExcludeFile(openFile openFileFunc) (excludeIPs scan.IPContainer, err e
 		if len(line) == 0 {
 			continue
 		}
-		var ipnet *net.IPNet
-		if ipnet, err = ip.ParseIPNet(line); err != nil {
+		prefix, zone, parseErr := ip.ParsePrefix(line)
+		if parseErr != nil || zone != "" {
+			err = ip.ErrInvalidAddr
 			return
 		}
-		if err = ranger.Insert(cidranger.NewBasicRangerEntry(*ipnet)); err != nil {
+		ipnet := net.IPNet{
+			IP:   net.IP(prefix.Addr().AsSlice()),
+			Mask: net.CIDRMask(prefix.Bits(), prefix.Addr().BitLen()),
+		}
+		if err = ranger.Insert(cidranger.NewBasicRangerEntry(ipnet)); err != nil {
 			return
 		}
 	}
-	excludeIPs = ranger
+	excludeIPs = &ipContainer{ranger: ranger}
 	return
 }
 

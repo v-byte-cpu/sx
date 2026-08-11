@@ -5,6 +5,7 @@ package scan
 import (
 	"context"
 	"net"
+	"net/netip"
 	"sync"
 	"time"
 
@@ -18,8 +19,9 @@ type PortRange struct {
 
 type Range struct {
 	Interface *net.Interface
-	DstSubnet *net.IPNet
-	SrcIP     net.IP
+	DstPrefix netip.Prefix
+	DstZone   string
+	SrcIP     netip.Addr
 	SrcMAC    net.HardwareAddr
 	Ports     []*PortRange
 }

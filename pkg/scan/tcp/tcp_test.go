@@ -3,6 +3,7 @@ package tcp
 import (
 	"context"
 	"net"
+	"net/netip"
 	"runtime"
 	"testing"
 	"time"
@@ -12,7 +13,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 )
 
 func TestPacketFillerEthernet(t *testing.T) {
@@ -85,8 +86,8 @@ func TestPacketFillerEthernet(t *testing.T) {
 
 			packet := gopacket.NewSerializeBuffer()
 			err := tt.filler.Fill(packet, &scan.Request{
-				SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-				DstIP:   net.IPv4(192, 168, 0, 2).To4(),
+				SrcIP:   netip.MustParseAddr("192.168.0.3"),
+				DstIP:   netip.MustParseAddr("192.168.0.2"),
 				SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 				DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 				DstPort: 4567,
@@ -197,8 +198,8 @@ func TestPacketFillerIPv4(t *testing.T) {
 
 			packet := gopacket.NewSerializeBuffer()
 			err := tt.filler.Fill(packet, &scan.Request{
-				SrcIP:   net.IPv4(192, 168, 0, 3).To4(),
-				DstIP:   net.IPv4(192, 168, 0, 2).To4(),
+				SrcIP:   netip.MustParseAddr("192.168.0.3"),
+				DstIP:   netip.MustParseAddr("192.168.0.2"),
 				SrcMAC:  net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 				DstMAC:  net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
 				DstPort: 4567,
@@ -482,12 +483,12 @@ func TestAllFlags(t *testing.T) {
 type mockIPGeneratorFunc func(
 	ctx context.Context,
 	r *scan.Range,
-) (<-chan scan.GeneratorResult[net.IP], error)
+) (<-chan scan.GeneratorResult[netip.Addr], error)
 
 func (f mockIPGeneratorFunc) IPs(
 	ctx context.Context,
 	r *scan.Range,
-) (<-chan scan.GeneratorResult[net.IP], error) {
+) (<-chan scan.GeneratorResult[netip.Addr], error) {
 	return f(ctx, r)
 }
 
@@ -506,28 +507,28 @@ func BenchmarkTCPScanEngine(b *testing.B) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	dstIP := net.IPv4(192, 168, 0, 3).To4()
+	dstIP := netip.MustParseAddr("192.168.0.3")
 	ipgen := mockIPGeneratorFunc(func(
 		ctx context.Context,
 		_ *scan.Range,
-	) (<-chan scan.GeneratorResult[net.IP], error) {
-		out := make(chan scan.GeneratorResult[net.IP], 100)
+	) (<-chan scan.GeneratorResult[netip.Addr], error) {
+		out := make(chan scan.GeneratorResult[netip.Addr], 100)
 		go func() {
 			defer close(out)
 			for i := 0; i < b.N; i++ {
 				select {
 				case <-ctx.Done():
 					return
-				case out <- scan.GeneratorResult[net.IP]{Value: dstIP}:
+				case out <- scan.GeneratorResult[netip.Addr]{Value: dstIP}:
 				}
 			}
 		}()
 		return out, nil
 	})
-	reqgen := arp.NewCacheRequestGenerator(
+	reqgen := neighbor.NewCacheRequestGenerator(
 		scan.NewIPPortGenerator(ipgen, scan.NewPortGenerator()),
 		net.HardwareAddr{0x10, 0x11, 0x12, 0x13, 0x14, 0x15},
-		arp.NewCache())
+		neighbor.NewCache())
 	pktgen := scan.NewPacketMultiGenerator(NewPacketFiller(), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
@@ -535,7 +536,7 @@ func BenchmarkTCPScanEngine(b *testing.B) {
 	engine := scan.SetupPacketEngine(&nullPacketReadWriter{}, sm)
 
 	done, _ := engine.Start(ctx, &scan.Range{
-		SrcIP:  net.IPv4(192, 168, 0, 2).To4(),
+		SrcIP:  netip.MustParseAddr("192.168.0.2"),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		Ports: []*scan.PortRange{
 			{

@@ -1,15 +1,13 @@
-//go:generate go tool easyjson -output_filename result_easyjson.go arp.go
-
 package arp
 
 import (
-	"fmt"
 	"net"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/macs"
 	"github.com/v-byte-cpu/sx/pkg/scan"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 )
 
 type ScanMethod struct {
@@ -25,21 +23,6 @@ type ScanMethod struct {
 
 // Assert that arp.ScanMethod conforms to the scan.Method interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
-
-//easyjson:json
-type ScanResult struct {
-	IP     string `json:"ip"`
-	MAC    string `json:"mac"`
-	Vendor string `json:"vendor"`
-}
-
-func (r *ScanResult) String() string {
-	return fmt.Sprintf("%-20s %-20s %s", r.IP, r.MAC, r.Vendor)
-}
-
-func (r *ScanResult) ID() string {
-	return r.IP
-}
 
 func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan) *ScanMethod {
 	sm := &ScanMethod{
@@ -67,7 +50,7 @@ func (s *ScanMethod) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo) err
 	copy(s.rcvMacPrefix[:], s.rcvARP.SourceHwAddress[:3])
 	hwVendor := macs.ValidMACPrefixMap[s.rcvMacPrefix]
 
-	s.results.Put(&ScanResult{
+	s.results.Put(&neighbor.ScanResult{
 		IP:     net.IP(s.rcvARP.SourceProtAddress).String(),
 		MAC:    net.HardwareAddr(s.rcvARP.SourceHwAddress).String(),
 		Vendor: hwVendor,
@@ -95,9 +78,9 @@ func (*PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) erro
 		ProtAddressSize:   uint8(4),
 		Operation:         layers.ARPRequest,
 		SourceHwAddress:   r.SrcMAC,
-		SourceProtAddress: r.SrcIP,
+		SourceProtAddress: net.IP(r.SrcIP.AsSlice()),
 		DstHwAddress:      net.HardwareAddr{0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
-		DstProtAddress:    r.DstIP.To4(),
+		DstProtAddress:    net.IP(r.DstIP.AsSlice()),
 	}
 
 	var opt gopacket.SerializeOptions

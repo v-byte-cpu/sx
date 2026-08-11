@@ -20,14 +20,18 @@ type Source struct {
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(iface string, vpnMode bool) (*Source, error) {
+func NewPacketSource(iface string, vpnMode bool, ipv6 bool) (*Source, error) {
 	handle, err := afp.NewTPacket(afp.SocketRaw, afp.OptInterface(iface))
 	if err != nil {
 		return nil, err
 	}
 	linkType := layers.LinkTypeEthernet
 	if vpnMode {
-		linkType = layers.LinkTypeIPv4
+		if ipv6 {
+			linkType = layers.LinkTypeIPv6
+		} else {
+			linkType = layers.LinkTypeIPv4
+		}
 	}
 	return &Source{handle, linkType}, nil
 }

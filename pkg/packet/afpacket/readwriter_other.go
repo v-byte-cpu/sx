@@ -16,7 +16,7 @@ type Source struct{}
 // Assert that AfPacketSource conforms to the packet.ReadWriter interface
 var _ packet.ReadWriter = (*Source)(nil)
 
-func NewPacketSource(_ string, _ bool) (*Source, error) {
+func NewPacketSource(_ string, _, _ bool) (*Source, error) {
 	return nil, ErrOS
 }
 

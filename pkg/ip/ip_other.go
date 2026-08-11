@@ -5,16 +5,17 @@ package ip
 import (
 	"errors"
 	"net"
+	"net/netip"
 )
 
 var errOS = errors.New("OS platform is not supported")
 
-func GetDefaultInterface() (iface *net.Interface, ifaceIP net.IP, err error) {
+func GetDefaultInterface(_ netip.Addr) (iface *net.Interface, ifaceIP netip.Addr, err error) {
 	err = errOS
 	return
 }
 
-func GetDefaultGatewayIP(_ *net.Interface) (gatewayIP net.IP, err error) {
+func GetDefaultGatewayIP(_ *net.Interface, _ netip.Addr) (gatewayIP netip.Addr, err error) {
 	err = errOS
 	return
 }

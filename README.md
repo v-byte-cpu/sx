@@ -31,7 +31,8 @@ The goal of this project is to create the fastest network scanner with clean and
 ## ✨ Features
 
   * **⚡ 30x times faster** than nmap
-  * **ARP scan**: Scan your local networks to detect live devices
+  * **ARP and NDP scans**: Discover IPv4 and IPv6 neighbors on local networks
+  * **Dual-stack scanning**: ICMP, TCP, UDP, and SOCKS5 support IPv4 and IPv6
   * **ICMP scan**: Use advanced ICMP scanning techniques to detect live hosts and firewall rules
   * **TCP SYN scan**: Traditional half-open scan to find open TCP ports
   * **TCP FIN / NULL / Xmas scans**: Scan techniques to bypass some firewall rules
@@ -111,20 +112,28 @@ Live scan mode that rescans network every 10 seconds:
 sx arp 192.168.0.1/24 --live 10s
 ```
 
+ARP is an IPv4-only protocol. For IPv6, use Neighbor Discovery Protocol (NDP):
+
+```
+sx ndp --json 'fe80::%en0/120' | tee neighbor.cache
+```
+
+Scoped link-local hosts and prefixes are supported. The interface zone is retained in JSON output, for example `fe80::1%en0`. NDP also supports `--live` and `--file` in the same way as ARP and the other IP scanners.
+
 ### TCP scan
 
-Unlike nmap and other scanners that implicitly perform ARP requests to resolve IP addresses to MAC addresses before the actual scan, `sx` explicitly uses the **ARP cache** concept. ARP cache file is a simple text file containing JSON string on each line ([JSONL](https://jsonlines.org/) file), which has the same JSON fields as the ARP scan JSON output described above. Scans of higher-level protocols like TCP and UDP read the ARP cache file from the stdin and then start the actual scan.
+Unlike nmap and other scanners that implicitly resolve link-layer addresses before the actual scan, `sx` explicitly uses a **neighbor cache**. The cache is a JSONL file with `ip`, `mac`, and optional `vendor` fields. It can contain IPv4 entries produced by `sx arp` and IPv6 entries produced by `sx ndp`. Higher-level scans read it from stdin by default.
 
-This not only simplifies the design of the program, but also speeds up the scanning process, since it is not necessary to perform an ARP scan every time.
+This also avoids repeating ARP or NDP discovery for every higher-level scan.
 
-Let's assume that the actual ARP cache is in the `arp.cache` file. We can create it manually
-or use ARP scan as shown below:
+Let's assume that the current IPv4 neighbor cache is in the `arp.cache` file. We can create it manually
+or populate it with an ARP scan:
 
 ```
 sx arp 192.168.0.1/24 --json | tee arp.cache
 ```
 
-Once we have the ARP cache file, we can run scans of higher-level protocols like TCP SYN scan:
+Once we have the neighbor cache file, we can run higher-level scans such as TCP SYN:
 
 ```
 cat arp.cache | sx tcp -p 1-65535 192.168.0.171
@@ -185,7 +194,7 @@ sample input file:
 {"ip":"10.0.2.2","port":1081}
 ```
 
-It is possible to specify the ARP cache file using the `-a` or `--arp-cache` options:
+It is possible to specify the neighbor cache file using `-a` or `--neighbor-cache`. The old `--arp-cache` name remains as a deprecated alias:
 
 ```
 sx tcp -a arp.cache -p 22,443 192.168.0.171
@@ -196,6 +205,17 @@ or stdin redirect:
 ```
 sx tcp -p 22,443 192.168.0.171 < arp.cache
 ```
+
+IPv6 works with the same TCP, UDP, ICMP, and SOCKS commands:
+
+```
+sx ndp --json 'fe80::%en0/120' | sx tcp -p 22,443 'fe80::1%en0'
+sx socks -p 1080 '2001:db8::/120'
+```
+
+For file-only raw-packet scans, pass `--ipv6` to select an IPv6 source/interface. IPv6 packet fields use `--hop-limit`, `--next-header`, and `--payload-length`; ICMPv6 additionally uses `--icmpv6-type` and `--icmpv6-code`. IPv4-only fields such as `--ttl`, `--ipproto`, `--ipflags`, and `--iplen` are rejected for IPv6 scans.
+
+To keep randomized target generation bounded, directly generated IPv6 ranges must be `/96` or narrower. Use `--file` for larger or explicitly selected address sets.
 
 You can also use the `tcp syn` subcommand instead of the `tcp`:
 

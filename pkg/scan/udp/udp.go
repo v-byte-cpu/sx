@@ -2,6 +2,7 @@ package udp
 
 import (
 	"math/rand"
+	"net"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -25,8 +26,16 @@ type ScanMethod struct {
 // Assert that udp.ScanMethod conforms to the scan.PacketMethod interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
 
-func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool) *ScanMethod {
-	pp := icmp.NewPacketProcessor(ScanType, results, vpnMode)
+func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool, ipv6 ...bool) *ScanMethod {
+	pp := icmp.NewPacketProcessor(ScanType, results, vpnMode, ipv6...)
+	return newScanMethod(psrc, pp)
+}
+
+func NewScanMethodForFamily(psrc scan.PacketSource, results scan.ResultChan, vpnMode, ipv6 bool, zone string) *ScanMethod {
+	return newScanMethod(psrc, icmp.NewPacketProcessorForFamily(ScanType, results, vpnMode, ipv6, zone))
+}
+
+func newScanMethod(psrc scan.PacketSource, pp *icmp.PacketProcessor) *ScanMethod {
 	return &ScanMethod{
 		PacketSource: psrc,
 		Processor:    pp,
@@ -41,6 +50,10 @@ type PacketFiller struct {
 	flags   layers.IPv4Flag
 	payload []byte
 	vpnMode bool
+
+	hopLimit      uint8
+	nextHeader    layers.IPProtocol
+	payloadLength uint16
 }
 
 // Assert that udp.PacketFiller conforms to the scan.PacketFiller interface
@@ -86,12 +99,26 @@ func WithVPNmode(vpnMode bool) PacketFillerOption {
 	}
 }
 
+func WithHopLimit(hopLimit uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.hopLimit = hopLimit }
+}
+
+func WithNextHeader(nextHeader uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.nextHeader = layers.IPProtocol(nextHeader) }
+}
+
+func WithPayloadLength(payloadLength uint16) PacketFillerOption {
+	return func(f *PacketFiller) { f.payloadLength = payloadLength }
+}
+
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	f := &PacketFiller{
 		// typical TTL value for Linux
-		ttl:   64,
-		proto: layers.IPProtocolUDP,
-		flags: layers.IPv4DontFragment,
+		ttl:        64,
+		proto:      layers.IPProtocolUDP,
+		flags:      layers.IPv4DontFragment,
+		hopLimit:   64,
+		nextHeader: layers.IPProtocolUDP,
 	}
 	for _, o := range opts {
 		o(f)
@@ -100,6 +127,9 @@ func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 }
 
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
+	if r.DstIP.Is6() {
+		return f.fillIPv6(packet, r)
+	}
 
 	ip := &layers.IPv4{
 		Version: 4,
@@ -113,8 +143,8 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		TTL:      f.ttl,
 		Length:   f.length,
 		Protocol: f.proto,
-		SrcIP:    r.SrcIP,
-		DstIP:    r.DstIP,
+		SrcIP:    r.SrcIP.AsSlice(),
+		DstIP:    r.DstIP.AsSlice(),
 	}
 
 	udp := &layers.UDP{
@@ -141,4 +171,30 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	return gopacket.SerializeLayers(packet, opt, eth, ip, udp, gopacket.Payload(f.payload))
+}
+
+func (f *PacketFiller) fillIPv6(packet gopacket.SerializeBuffer, r *scan.Request) error {
+	ipv6 := &layers.IPv6{
+		Version:    6,
+		Length:     f.payloadLength,
+		NextHeader: f.nextHeader,
+		HopLimit:   f.hopLimit,
+		SrcIP:      net.IP(r.SrcIP.WithZone("").AsSlice()),
+		DstIP:      net.IP(r.DstIP.WithZone("").AsSlice()),
+	}
+	udp := &layers.UDP{
+		SrcPort: layers.UDPPort(32768 + rand.Intn(61000-32768)),
+		DstPort: layers.UDPPort(r.DstPort),
+	}
+	if err := udp.SetNetworkLayerForChecksum(ipv6); err != nil {
+		return err
+	}
+	options := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: f.payloadLength == 0}
+	layersToSerialize := []gopacket.SerializableLayer{ipv6, udp, gopacket.Payload(f.payload)}
+	if !f.vpnMode {
+		layersToSerialize = append([]gopacket.SerializableLayer{&layers.Ethernet{
+			SrcMAC: r.SrcMAC, DstMAC: r.DstMAC, EthernetType: layers.EthernetTypeIPv6,
+		}}, layersToSerialize...)
+	}
+	return gopacket.SerializeLayers(packet, options, layersToSerialize...)
 }

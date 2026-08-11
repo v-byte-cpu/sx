@@ -9,7 +9,7 @@ import (
 	"errors"
 	"io"
 	"math/big"
-	"net"
+	"net/netip"
 	"time"
 )
 
@@ -23,8 +23,8 @@ var (
 
 type Request struct {
 	Meta    map[string]interface{}
-	SrcIP   net.IP
-	DstIP   net.IP
+	SrcIP   netip.Addr
+	DstIP   netip.Addr
 	SrcMAC  []byte
 	DstMAC  []byte
 	DstPort uint16
@@ -97,7 +97,7 @@ func validatePorts(ports []*PortRange) error {
 // IPGenerator produces IP addresses for a scan range.
 type IPGenerator interface {
 	// IPs generates the IP addresses described by r until completion or context cancellation.
-	IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[net.IP], error)
+	IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[netip.Addr], error)
 }
 
 func NewIPGenerator() IPGenerator {
@@ -106,31 +106,41 @@ func NewIPGenerator() IPGenerator {
 
 type ipGenerator struct{}
 
-func (*ipGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[net.IP], error) {
-	if r.DstSubnet == nil {
+func (*ipGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[netip.Addr], error) {
+	if !r.DstPrefix.IsValid() {
 		return nil, ErrSubnet
 	}
-	ipnet := r.DstSubnet
-	ones, bits := ipnet.Mask.Size()
-	it, err := newRangeIterator(1 << (bits - ones))
+	prefix := r.DstPrefix.Masked()
+	bits := prefix.Addr().BitLen()
+	hostBits := bits - prefix.Bits()
+	if hostBits > 32 {
+		return nil, errRangeSize
+	}
+	it, err := newRangeIterator(1 << hostBits)
 	if err != nil {
 		return nil, err
 	}
 
-	baseIP := big.NewInt(0).SetBytes(ipnet.IP.Mask(ipnet.Mask))
+	baseIP := big.NewInt(0).SetBytes(prefix.Addr().AsSlice())
 	baseIP.Sub(baseIP, big.NewInt(1))
 
-	out := make(chan GeneratorResult[net.IP], 100)
+	out := make(chan GeneratorResult[netip.Addr], 100)
 	go func() {
 		defer close(out)
 		for {
 			i := it.Int()
 			baseIP.Add(baseIP, i)
-			// TODO IPv6
-			ipaddr := baseIP.FillBytes(make([]byte, 4))
+			addr, ok := netip.AddrFromSlice(baseIP.FillBytes(make([]byte, bits/8)))
 			baseIP.Sub(baseIP, i)
+			if !ok {
+				sendContext(ctx, out, GeneratorResult[netip.Addr]{Err: ErrIP})
+				return
+			}
+			if r.DstZone != "" {
+				addr = addr.WithZone(r.DstZone)
+			}
 
-			if !sendContext(ctx, out, GeneratorResult[net.IP]{Value: ipaddr}) {
+			if !sendContext(ctx, out, GeneratorResult[netip.Addr]{Value: addr}) {
 				return
 			}
 
@@ -242,29 +252,12 @@ func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, r *Range) (
 		defer close(out)
 		defer input.Close()
 		scanner := bufio.NewScanner(input)
-		var entry IPPort
 		for scanner.Scan() {
-			entry.IP = ""
-			entry.Port = 0
-			if err := entry.UnmarshalJSON(scanner.Bytes()); err != nil {
-				sendContext(ctx, out, &Request{Err: ErrJSON})
+			request, fatal := parseFileIPPortRequest(scanner.Bytes(), r)
+			if !sendContext(ctx, out, request) {
 				return
 			}
-			ip := net.ParseIP(entry.IP)
-			if ip == nil {
-				if !sendContext(ctx, out, &Request{Err: ErrIP}) {
-					return
-				}
-				continue
-			}
-			if !isValidPort(entry.Port) {
-				if !sendContext(ctx, out, &Request{Err: ErrPort}) {
-					return
-				}
-				continue
-			}
-			if !sendContext(ctx, out, &Request{
-				SrcIP: r.SrcIP, SrcMAC: r.SrcMAC, DstIP: ip, DstPort: uint16(entry.Port)}) {
+			if fatal {
 				return
 			}
 		}
@@ -273,6 +266,27 @@ func (rg *fileIPPortGenerator) GenerateRequests(ctx context.Context, r *Range) (
 		}
 	}()
 	return out, nil
+}
+
+func parseFileIPPortRequest(data []byte, r *Range) (*Request, bool) {
+	var entry IPPort
+	if err := entry.UnmarshalJSON(data); err != nil {
+		return &Request{Err: ErrJSON}, true
+	}
+	ip, err := netip.ParseAddr(entry.IP)
+	if err != nil {
+		return &Request{Err: ErrIP}, false
+	}
+	if !isValidPort(entry.Port) {
+		return &Request{Err: ErrPort}, false
+	}
+	ip = ip.Unmap()
+	if r.SrcIP.IsValid() && r.SrcIP.Is4() != ip.Is4() {
+		return &Request{Err: ErrIP}, false
+	}
+	return &Request{
+		SrcIP: r.SrcIP, SrcMAC: r.SrcMAC, DstIP: ip, DstPort: uint16(entry.Port),
+	}, false
 }
 
 func isValidPort(port int) bool {
@@ -287,12 +301,12 @@ func NewFileIPGenerator(openFile OpenFileFunc) IPGenerator {
 	return &fileIPGenerator{openFile}
 }
 
-func (g *fileIPGenerator) IPs(ctx context.Context, _ *Range) (<-chan GeneratorResult[net.IP], error) {
+func (g *fileIPGenerator) IPs(ctx context.Context, r *Range) (<-chan GeneratorResult[netip.Addr], error) {
 	input, err := g.openFile()
 	if err != nil {
 		return nil, err
 	}
-	out := make(chan GeneratorResult[net.IP])
+	out := make(chan GeneratorResult[netip.Addr])
 	go func() {
 		defer close(out)
 		defer input.Close()
@@ -301,20 +315,25 @@ func (g *fileIPGenerator) IPs(ctx context.Context, _ *Range) (<-chan GeneratorRe
 		for scanner.Scan() {
 			entry = IPPort{}
 			if err := entry.UnmarshalJSON(scanner.Bytes()); err != nil {
-				sendContext(ctx, out, GeneratorResult[net.IP]{Err: ErrJSON})
+				sendContext(ctx, out, GeneratorResult[netip.Addr]{Err: ErrJSON})
 				return
 			}
-			ip := net.ParseIP(entry.IP)
-			if ip == nil {
-				sendContext(ctx, out, GeneratorResult[net.IP]{Err: ErrIP})
+			ip, err := netip.ParseAddr(entry.IP)
+			if err != nil {
+				sendContext(ctx, out, GeneratorResult[netip.Addr]{Err: ErrIP})
 				return
 			}
-			if !sendContext(ctx, out, GeneratorResult[net.IP]{Value: ip}) {
+			ip = ip.Unmap()
+			if r.SrcIP.IsValid() && r.SrcIP.Is4() != ip.Is4() {
+				sendContext(ctx, out, GeneratorResult[netip.Addr]{Err: ErrIP})
+				return
+			}
+			if !sendContext(ctx, out, GeneratorResult[netip.Addr]{Value: ip}) {
 				return
 			}
 		}
 		if err = scanner.Err(); err != nil {
-			sendContext(ctx, out, GeneratorResult[net.IP]{Err: err})
+			sendContext(ctx, out, GeneratorResult[netip.Addr]{Err: err})
 		}
 	}()
 	return out, nil
@@ -370,7 +389,8 @@ func readRequest(ctx context.Context, requests <-chan *Request) (request *Reques
 }
 
 type IPContainer interface {
-	Contains(ip net.IP) (bool, error)
+	// Contains reports whether ip belongs to the container.
+	Contains(ip netip.Addr) (bool, error)
 }
 
 type filterIPRequestGenerator struct {

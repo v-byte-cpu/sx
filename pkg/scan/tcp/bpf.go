@@ -14,9 +14,13 @@ const MaxPacketLength = 1518
 func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
 	var sb strings.Builder
 	sb.WriteString("tcp")
-	if r.DstSubnet != nil {
-		sb.WriteString(" and ip src net ")
-		sb.WriteString(r.DstSubnet.String())
+	if r.DstPrefix.IsValid() {
+		if r.DstPrefix.Addr().Is6() {
+			sb.WriteString(" and ip6 src net ")
+		} else {
+			sb.WriteString(" and ip src net ")
+		}
+		sb.WriteString(r.DstPrefix.String())
 	}
 	if len(r.Ports) > 0 {
 		sb.WriteString(" and (")
@@ -32,5 +36,8 @@ func BPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
 
 func SYNACKBPFFilter(r *scan.Range) (filter string, maxPacketLength int) {
 	filter, maxPacketLength = BPFFilter(r)
+	if r.SrcIP.Is6() || (r.DstPrefix.IsValid() && r.DstPrefix.Addr().Is6()) {
+		return filter, maxPacketLength
+	}
 	return filter + " and tcp[13] == 18", maxPacketLength
 }

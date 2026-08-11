@@ -9,8 +9,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/v-byte-cpu/sx/pkg/scan"
-	"github.com/v-byte-cpu/sx/pkg/scan/arp"
 	"github.com/v-byte-cpu/sx/pkg/scan/icmp"
+	"github.com/v-byte-cpu/sx/pkg/scan/neighbor"
 	"github.com/v-byte-cpu/sx/pkg/scan/udp"
 )
 
@@ -32,6 +32,15 @@ func newUDPCmd() *udpCmd {
 
 			if err = c.opts.parseRawOptions(); err != nil {
 				return
+			}
+			ipv6 := c.opts.ipv6
+			if prefix, _, prefixErr := c.opts.parseDstPrefix(args); prefixErr == nil && prefix.IsValid() {
+				ipv6 = prefix.Addr().Is6()
+			}
+			if err = validateIPVersionFlags(cmd, ipv6,
+				[]string{"ttl", "ipproto", "ipflags", "iplen"},
+				[]string{flagHopLimit, flagNextHeader, flagPayloadLength}); err != nil {
+				return err
 			}
 			if err = c.opts.parseOptions(udp.ScanType, args); err != nil {
 				return
@@ -72,7 +81,10 @@ type udpCmdOpts struct {
 	ipProtocol uint8
 	ipTotalLen uint16
 
-	udpPayload []byte
+	udpPayload    []byte
+	hopLimit      uint8
+	nextHeader    uint8
+	payloadLength uint16
 
 	rawIPFlags    string
 	rawUDPPayload string
@@ -89,6 +101,9 @@ func (o *udpCmdOpts) initCliFlags(cmd *cobra.Command) {
 
 	cmd.Flags().StringVar(&o.rawUDPPayload, "payload", "",
 		strings.Join([]string{"set byte payload of generated packet", "0 bytes by default"}, "\n"))
+	cmd.Flags().Uint8Var(&o.hopLimit, flagHopLimit, 64, "set IPv6 Hop Limit field")
+	cmd.Flags().Uint8Var(&o.nextHeader, flagNextHeader, 17, "set IPv6 Next Header field")
+	cmd.Flags().Uint16Var(&o.payloadLength, flagPayloadLength, 0, "set IPv6 Payload Length field (calculated by default)")
 }
 
 func (o *udpCmdOpts) parseRawOptions() (err error) {
@@ -111,12 +126,12 @@ func (o *udpCmdOpts) parseRawOptions() (err error) {
 func (o *udpCmdOpts) newUDPScanMethod(ctx context.Context) *udp.ScanMethod {
 	reqgen := o.newIPPortGenerator()
 	if o.cache != nil {
-		reqgen = arp.NewCacheRequestGenerator(o.newIPPortGenerator(), o.gatewayMAC, o.cache)
+		reqgen = neighbor.NewCacheRequestGenerator(reqgen, o.gatewayMAC, o.cache)
 	}
 	pktgen := scan.NewPacketMultiGenerator(udp.NewPacketFiller(o.getUDPOptions()...), runtime.NumCPU())
 	psrc := scan.NewPacketSource(reqgen, pktgen)
 	results := scan.NewResultChan(ctx, 1000)
-	return udp.NewScanMethod(psrc, results, o.vpnMode)
+	return udp.NewScanMethodForFamily(psrc, results, o.vpnMode, o.ipv6, o.scanRange.Interface.Name)
 }
 
 func (o *udpCmdOpts) getUDPOptions() (opts []udp.PacketFillerOption) {
@@ -126,6 +141,10 @@ func (o *udpCmdOpts) getUDPOptions() (opts []udp.PacketFillerOption) {
 		udp.WithIPFlags(o.ipFlags),
 		udp.WithIPTotalLength(o.ipTotalLen),
 		udp.WithVPNmode(o.vpnMode))
+	opts = append(opts,
+		udp.WithHopLimit(o.hopLimit),
+		udp.WithNextHeader(o.nextHeader),
+		udp.WithPayloadLength(o.payloadLength))
 
 	if len(o.udpPayload) > 0 {
 		opts = append(opts, udp.WithPayload(o.udpPayload))

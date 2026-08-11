@@ -5,6 +5,8 @@ package icmp
 import (
 	"fmt"
 	rand "math/rand/v2"
+	"net"
+	"net/netip"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
@@ -23,12 +25,19 @@ type Response struct {
 type ScanResult struct {
 	ScanType string    `json:"scan"`
 	IP       string    `json:"ip"`
-	TTL      uint8     `json:"ttl"`
+	TTL      uint8     `json:"ttl,omitempty"`
+	HopLimit uint8     `json:"hop_limit,omitempty"`
 	ICMP     *Response `json:"icmp"`
 }
 
 func (r *ScanResult) String() string {
-	return fmt.Sprintf("%-20s %-5d %-5d %-5d", r.IP, r.ICMP.Type, r.ICMP.Code, r.TTL)
+	ttl := r.TTL
+	width := 20
+	if r.HopLimit != 0 {
+		ttl = r.HopLimit
+		width = 40
+	}
+	return fmt.Sprintf("%-*s %-5d %-5d %-5d", width, r.IP, r.ICMP.Type, r.ICMP.Code, ttl)
 }
 
 func (r *ScanResult) ID() string {
@@ -44,8 +53,16 @@ type ScanMethod struct {
 // Assert that icmp.ScanMethod conforms to the scan.PacketMethod interface
 var _ scan.PacketMethod = (*ScanMethod)(nil)
 
-func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool) *ScanMethod {
-	pp := NewPacketProcessor(ScanType, results, vpnMode)
+func NewScanMethod(psrc scan.PacketSource, results scan.ResultChan, vpnMode bool, ipv6 ...bool) *ScanMethod {
+	pp := NewPacketProcessor(ScanType, results, vpnMode, ipv6...)
+	return newScanMethod(psrc, pp)
+}
+
+func NewScanMethodForFamily(psrc scan.PacketSource, results scan.ResultChan, vpnMode, ipv6 bool, zone string) *ScanMethod {
+	return newScanMethod(psrc, newPacketProcessor(ScanType, results, vpnMode, ipv6, zone))
+}
+
+func newScanMethod(psrc scan.PacketSource, pp *PacketProcessor) *ScanMethod {
 	return &ScanMethod{
 		PacketSource: psrc,
 		Processor:    pp,
@@ -61,17 +78,42 @@ type PacketProcessor struct {
 	rcvDecoded []gopacket.LayerType
 	rcvEth     layers.Ethernet
 	rcvIP      layers.IPv4
+	rcvIPv6    layers.IPv6
 	rcvICMP    layers.ICMPv4
+	rcvICMPv6  layers.ICMPv6
+	ipv6       bool
+	zone       string
 }
 
-func NewPacketProcessor(scanType string, results scan.ResultChan, vpnMode bool) *PacketProcessor {
-	p := &PacketProcessor{scanType: scanType, results: results}
+func NewPacketProcessor(scanType string, results scan.ResultChan, vpnMode bool, ipv6 ...bool) *PacketProcessor {
+	isIPv6 := false
+	if len(ipv6) > 0 {
+		isIPv6 = ipv6[0]
+	}
+	return newPacketProcessor(scanType, results, vpnMode, isIPv6, "")
+}
+
+func NewPacketProcessorForFamily(scanType string, results scan.ResultChan, vpnMode, ipv6 bool, zone string) *PacketProcessor {
+	return newPacketProcessor(scanType, results, vpnMode, ipv6, zone)
+}
+
+func newPacketProcessor(scanType string, results scan.ResultChan, vpnMode, ipv6 bool, zone string) *PacketProcessor {
+	p := &PacketProcessor{scanType: scanType, results: results, ipv6: ipv6, zone: zone}
 
 	layerType := layers.LayerTypeEthernet
 	if vpnMode {
-		layerType = layers.LayerTypeIPv4
+		if p.ipv6 {
+			layerType = layers.LayerTypeIPv6
+		} else {
+			layerType = layers.LayerTypeIPv4
+		}
 	}
-	parser := gopacket.NewDecodingLayerParser(layerType, &p.rcvEth, &p.rcvIP, &p.rcvICMP)
+	var parser *gopacket.DecodingLayerParser
+	if p.ipv6 {
+		parser = gopacket.NewDecodingLayerParser(layerType, &p.rcvEth, &p.rcvIPv6, &p.rcvICMPv6)
+	} else {
+		parser = gopacket.NewDecodingLayerParser(layerType, &p.rcvEth, &p.rcvIP, &p.rcvICMP)
+	}
 	parser.IgnoreUnsupported = true
 	p.parser = parser
 	return p
@@ -85,8 +127,24 @@ func (p *PacketProcessor) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo
 	if err = p.parser.DecodeLayers(data, &p.rcvDecoded); err != nil {
 		return
 	}
-	if !validPacket(p.rcvDecoded) {
+	if !p.validPacket() {
 		return
+	}
+	if p.ipv6 {
+		address, _ := netip.AddrFromSlice(p.rcvIPv6.SrcIP)
+		if address.IsLinkLocalUnicast() && p.zone != "" {
+			address = address.WithZone(p.zone)
+		}
+		p.results.Put(&ScanResult{
+			ScanType: p.scanType,
+			IP:       address.String(),
+			HopLimit: p.rcvIPv6.HopLimit,
+			ICMP: &Response{
+				Type: p.rcvICMPv6.TypeCode.Type(),
+				Code: p.rcvICMPv6.TypeCode.Code(),
+			},
+		})
+		return nil
 	}
 
 	p.results.Put(&ScanResult{
@@ -99,6 +157,13 @@ func (p *PacketProcessor) ProcessPacketData(data []byte, _ *gopacket.CaptureInfo
 		},
 	})
 	return
+}
+
+func (p *PacketProcessor) validPacket() bool {
+	if p.ipv6 {
+		return len(p.rcvDecoded) == 3 || (len(p.rcvDecoded) == 2 && p.rcvDecoded[0] == layers.LayerTypeIPv6)
+	}
+	return validPacket(p.rcvDecoded)
 }
 
 func validPacket(decoded []gopacket.LayerType) bool {
@@ -114,6 +179,12 @@ type PacketFiller struct {
 	code    uint8
 	payload []byte
 	vpnMode bool
+
+	hopLimit      uint8
+	nextHeader    layers.IPProtocol
+	payloadLength uint16
+	icmpv6Type    uint8
+	icmpv6Code    uint8
 }
 
 // Assert that icmp.PacketFiller conforms to the scan.PacketFiller interface
@@ -171,17 +242,40 @@ func WithVPNmode(vpnMode bool) PacketFillerOption {
 	}
 }
 
+func WithHopLimit(hopLimit uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.hopLimit = hopLimit }
+}
+
+func WithNextHeader(nextHeader uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.nextHeader = layers.IPProtocol(nextHeader) }
+}
+
+func WithPayloadLength(payloadLength uint16) PacketFillerOption {
+	return func(f *PacketFiller) { f.payloadLength = payloadLength }
+}
+
+func WithICMPv6Type(typ uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.icmpv6Type = typ }
+}
+
+func WithICMPv6Code(code uint8) PacketFillerOption {
+	return func(f *PacketFiller) { f.icmpv6Code = code }
+}
+
 func NewPacketFiller(opts ...PacketFillerOption) *PacketFiller {
 	payload := make([]byte, 48)
 	fillRandomPayload(payload)
 	f := &PacketFiller{
 		// typical TTL value for Linux
-		ttl:     64,
-		proto:   layers.IPProtocolICMPv4,
-		flags:   layers.IPv4DontFragment,
-		typ:     layers.ICMPv4TypeEchoRequest,
-		code:    0,
-		payload: payload,
+		ttl:        64,
+		proto:      layers.IPProtocolICMPv4,
+		flags:      layers.IPv4DontFragment,
+		typ:        layers.ICMPv4TypeEchoRequest,
+		code:       0,
+		payload:    payload,
+		hopLimit:   64,
+		nextHeader: layers.IPProtocolICMPv6,
+		icmpv6Type: layers.ICMPv6TypeEchoRequest,
 	}
 	for _, o := range opts {
 		o(f)
@@ -196,6 +290,9 @@ func fillRandomPayload(payload []byte) {
 }
 
 func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (err error) {
+	if r.DstIP.Is6() {
+		return f.fillIPv6(packet, r)
+	}
 
 	ip := &layers.IPv4{
 		Version: 4,
@@ -209,8 +306,8 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		TTL:      f.ttl,
 		Length:   f.length,
 		Protocol: f.proto,
-		SrcIP:    r.SrcIP,
-		DstIP:    r.DstIP,
+		SrcIP:    r.SrcIP.AsSlice(),
+		DstIP:    r.DstIP.AsSlice(),
 	}
 
 	icmp := &layers.ICMPv4{
@@ -233,4 +330,27 @@ func (f *PacketFiller) Fill(packet gopacket.SerializeBuffer, r *scan.Request) (e
 		EthernetType: layers.EthernetTypeIPv4,
 	}
 	return gopacket.SerializeLayers(packet, opt, eth, ip, icmp, gopacket.Payload(f.payload))
+}
+
+func (f *PacketFiller) fillIPv6(packet gopacket.SerializeBuffer, r *scan.Request) error {
+	ipv6 := &layers.IPv6{
+		Version:    6,
+		Length:     f.payloadLength,
+		NextHeader: f.nextHeader,
+		HopLimit:   f.hopLimit,
+		SrcIP:      net.IP(r.SrcIP.WithZone("").AsSlice()),
+		DstIP:      net.IP(r.DstIP.WithZone("").AsSlice()),
+	}
+	icmpv6 := &layers.ICMPv6{TypeCode: layers.CreateICMPv6TypeCode(f.icmpv6Type, f.icmpv6Code)}
+	if err := icmpv6.SetNetworkLayerForChecksum(ipv6); err != nil {
+		return err
+	}
+	options := gopacket.SerializeOptions{ComputeChecksums: true, FixLengths: f.payloadLength == 0}
+	layersToSerialize := []gopacket.SerializableLayer{ipv6, icmpv6, gopacket.Payload(f.payload)}
+	if !f.vpnMode {
+		layersToSerialize = append([]gopacket.SerializableLayer{&layers.Ethernet{
+			SrcMAC: r.SrcMAC, DstMAC: r.DstMAC, EthernetType: layers.EthernetTypeIPv6,
+		}}, layersToSerialize...)
+	}
+	return gopacket.SerializeLayers(packet, options, layersToSerialize...)
 }

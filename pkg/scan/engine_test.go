@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"net/netip"
 	"sort"
 	"testing"
 	"time"
@@ -110,10 +111,7 @@ func TestPacketEngineStartCollectsAllErrors(t *testing.T) {
 	e := NewPacketEngine(ps, s, r)
 
 	_, out := e.Start(context.Background(), &Range{
-		DstSubnet: &net.IPNet{
-			IP:   net.IPv4(192, 168, 0, 1),
-			Mask: net.CIDRMask(32, 32),
-		},
+		DstPrefix: netip.MustParsePrefix("192.168.0.1/32"),
 		Ports: []*PortRange{
 			{
 				StartPort: 888,
@@ -136,7 +134,7 @@ func TestPacketSourceReturnsError(t *testing.T) {
 	pktgen := NewMockPacketGenerator(ctrl)
 
 	scanRange := &Range{
-		SrcIP:  net.IPv4(192, 168, 0, 1),
+		SrcIP:  ip4(192, 168, 0, 1),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		Ports: []*PortRange{
 			{
@@ -162,7 +160,7 @@ func TestPacketSourceReturnsData(t *testing.T) {
 	pktgen := NewMockPacketGenerator(ctrl)
 
 	scanRange := &Range{
-		SrcIP:  net.IPv4(192, 168, 0, 1),
+		SrcIP:  ip4(192, 168, 0, 1),
 		SrcMAC: net.HardwareAddr{0x1, 0x2, 0x3, 0x4, 0x5, 0x6},
 		Ports: []*PortRange{
 			{
@@ -194,7 +192,7 @@ func TestRateLimitScanner(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	scanner := NewMockScanner(ctrl)
 
-	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+	req1 := &Request{DstIP: ip4(192, 168, 0, 1), DstPort: 22}
 	expectedResult := &mockScanResult{"id1"}
 	scanner.EXPECT().Scan(gomock.Not(gomock.Nil()), req1).
 		Return(expectedResult, nil).AnyTimes()
@@ -264,7 +262,7 @@ func TestScanEngineWithScannerError(t *testing.T) {
 	ctx := context.Background()
 
 	requests := make(chan *Request, 1)
-	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
+	req1 := &Request{DstIP: ip4(192, 168, 0, 1), DstPort: 22}
 	requests <- req1
 	close(requests)
 	reqgen.EXPECT().GenerateRequests(gomock.Not(gomock.Nil()), &Range{}).
@@ -287,8 +285,8 @@ func TestScanEngineWithResults(t *testing.T) {
 	defer cancel()
 
 	requests := make(chan *Request, 2)
-	req1 := &Request{DstIP: net.IPv4(192, 168, 0, 1), DstPort: 22}
-	req2 := &Request{DstIP: net.IPv4(192, 168, 0, 2), DstPort: 22}
+	req1 := &Request{DstIP: ip4(192, 168, 0, 1), DstPort: 22}
+	req2 := &Request{DstIP: ip4(192, 168, 0, 2), DstPort: 22}
 	requests <- req1
 	requests <- req2
 	close(requests)
