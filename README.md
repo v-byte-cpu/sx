@@ -31,7 +31,7 @@ The goal of this project is to create the fastest network scanner with clean and
 ## ✨ Features
 
   * **⚡ 30x times faster** than nmap
-  * **ARP and NDP scans**: Discover IPv4 and IPv6 neighbors on local networks
+  * **ARP, NDP, and multicast ICMPv6 scans**: Discover IPv4 and IPv6 neighbors on local networks
   * **Dual-stack scanning**: ICMP, TCP, UDP, and SOCKS5 support IPv4 and IPv6
   * **ICMP scan**: Use advanced ICMP scanning techniques to detect live hosts and firewall rules
   * **TCP SYN scan**: Traditional half-open scan to find open TCP ports
@@ -120,9 +120,31 @@ sx ndp --json 'fe80::%en0/120' | tee neighbor.cache
 
 Scoped link-local hosts and prefixes are supported. The interface zone is retained in JSON output, for example `fe80::1%en0`. NDP also supports `--live` and `--file` in the same way as ARP and the other IP scanners.
 
+For a fast best-effort IPv6 discovery pass, send one ICMPv6 Echo Request to the link-local all-nodes group (`ff02::1`):
+
+```
+sudo sx icmp discover --iface en0 --json | tee neighbor.cache
+```
+
+An explicit link-local multicast group can be supplied as the optional argument:
+
+```
+sudo sx icmp discover --iface en0 'ff02::1%en0'
+```
+
+By default, the command uses the first link-local IPv6 address assigned to the interface. If the interface has multiple link-local addresses, select one explicitly with `--srcip`:
+
+```
+sudo sx icmp discover --iface en0 --srcip 'fe80::1234%en0'
+```
+
+The source override must be a link-local unicast IPv6 address. Its optional zone must match `--iface`. As with other raw-packet scans, the override does not have to be assigned to the interface.
+
+The command maps the multicast IPv6 destination to its `33:33:xx:xx:xx:xx` Ethernet address and reports each correlated Echo Reply as the same `ip`, `mac`, and `vendor` JSONL shape used by ARP and NDP. Link-local result addresses retain the interface zone, so the JSON output can be passed directly to TCP or UDP scans as a neighbor cache. This is best-effort discovery: many hosts or firewalls ignore multicast Echo Requests, and an empty result does not mean that the link has no hosts or reveal every multicast membership.
+
 ### TCP scan
 
-Unlike nmap and other scanners that implicitly resolve link-layer addresses before the actual scan, `sx` explicitly uses a **neighbor cache**. The cache is a JSONL file with `ip`, `mac`, and optional `vendor` fields. It can contain IPv4 entries produced by `sx arp` and IPv6 entries produced by `sx ndp`. Higher-level scans read it from stdin by default.
+Unlike nmap and other scanners that implicitly resolve link-layer addresses before the actual scan, `sx` explicitly uses a **neighbor cache**. The cache is a JSONL file with `ip`, `mac`, and optional `vendor` fields. It can contain IPv4 entries produced by `sx arp` and IPv6 entries produced by `sx ndp` or `sx icmp discover`. Higher-level scans read it from stdin by default.
 
 This also avoids repeating ARP or NDP discovery for every higher-level scan.
 

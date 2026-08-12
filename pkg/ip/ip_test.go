@@ -80,6 +80,7 @@ func TestSelectInterfaceIPByAddressFamilyAndScope(t *testing.T) {
 		{name: "IPv4", target: netip.MustParseAddr("198.51.100.1"), expected: netip.MustParseAddr("192.0.2.2")},
 		{name: "IPv6Global", target: netip.MustParseAddr("2001:db8:1::1"), expected: netip.MustParseAddr("2001:db8::2")},
 		{name: "IPv6LinkLocal", target: netip.MustParseAddr("fe80::1"), expected: netip.MustParseAddr("fe80::2")},
+		{name: "IPv6LinkLocalMulticast", target: netip.MustParseAddr("ff02::1"), expected: netip.MustParseAddr("fe80::2")},
 	}
 
 	for _, tt := range tests {

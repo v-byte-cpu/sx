@@ -64,7 +64,7 @@ func GetInterfaceIP(iface *net.Interface, target netip.Addr) (netip.Addr, error)
 
 func selectInterfaceIP(addresses []netip.Prefix, target netip.Addr) netip.Addr {
 	wantIPv4 := target.Is4()
-	wantLinkLocal := target.Is6() && target.IsLinkLocalUnicast()
+	wantLinkLocal := target.Is6() && (target.IsLinkLocalUnicast() || target.IsLinkLocalMulticast())
 	for _, prefix := range addresses {
 		addr := prefix.Addr().Unmap()
 		if addr.Is4() != wantIPv4 {
