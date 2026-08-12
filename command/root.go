@@ -35,11 +35,13 @@ func newRootCmd(version string) *cobra.Command {
 		newTCPNULLCmd().cmd,
 		newTCPXmasCmd().cmd,
 	)
+	icmpCmd := newICMPCmd().cmd
+	icmpCmd.AddCommand(newICMPDiscoverCmd().cmd)
 
 	cmd.AddCommand(
 		newARPCmd().cmd,
 		newNDPCmd().cmd,
-		newICMPCmd().cmd,
+		icmpCmd,
 		newUDPCmd().cmd,
 		tcpCmd,
 		newSocksCmd().cmd,
